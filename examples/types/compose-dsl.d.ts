@@ -875,6 +875,14 @@ export interface TextProps extends ComposeCommonProps {
   weight?: number;
 }
 
+export interface MarkdownProps extends ComposeCommonProps {
+  text: string;
+  color?: ComposeColor;
+  fontSize?: number;
+  enableDialogs?: boolean;
+  streamTagName?: string;
+}
+
 export interface TextFieldProps extends ComposeCommonProps {
   label?: string | ComposeChildren;
   placeholder?: string | ComposeChildren;
@@ -1055,6 +1063,7 @@ export interface ComposeUiFactoryRegistry {
   Box: ComposeNodeFactory<BoxProps>;
   Spacer: ComposeNodeFactory<SpacerProps>;
   Text: ComposeNodeFactory<TextProps>;
+  Markdown: ComposeNodeFactory<MarkdownProps>;
   TextField: ComposeNodeFactory<TextFieldProps>;
   Switch: ComposeNodeFactory<SwitchProps>;
   Checkbox: ComposeNodeFactory<CheckboxProps>;

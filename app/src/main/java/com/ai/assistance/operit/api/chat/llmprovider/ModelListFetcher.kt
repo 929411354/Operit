@@ -93,6 +93,7 @@ object ModelListFetcher {
                     ApiProviderType.FOUR_ROUTER -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.NOUS_PORTAL -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.MOONSHOT -> "${extractBaseUrl(apiEndpoint)}/v1/models"
+                    ApiProviderType.MIMO -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.SILICONFLOW -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.IFLOW -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.DOUBAO -> "${extractBaseUrl(apiEndpoint)}/v3/models"
@@ -226,6 +227,13 @@ object ModelListFetcher {
                             requestBuilder.addHeader("HTTP-Referer", "ai.assistance.operit")
                             requestBuilder.addHeader("X-Title", "Assistance App")
                         }
+                        ApiProviderType.MIMO -> {
+                            AppLogger.d(TAG, "使用MiMo官方兼容认证头")
+                            if (apiKey.isNotBlank()) {
+                                requestBuilder.addHeader("Authorization", "Bearer $apiKey")
+                                requestBuilder.addHeader("api-key", apiKey)
+                            }
+                        }
                         ApiProviderType.ANTHROPIC,
                         ApiProviderType.ANTHROPIC_GENERIC -> {
                             AppLogger.d(TAG, "使用Anthropic x-api-key认证方式")
@@ -255,7 +263,7 @@ object ModelListFetcher {
                         val errorBody = response.body?.string() ?: context.getString(R.string.model_fetch_no_error_details)
                         val responseCode = response.code
                         response.close()
-                        if ((apiProviderType == ApiProviderType.OPENAI || apiProviderType == ApiProviderType.OPENAI_RESPONSES || apiProviderType == ApiProviderType.OPENAI_RESPONSES_GENERIC || apiProviderType == ApiProviderType.OPENAI_GENERIC || apiProviderType == ApiProviderType.OPENAI_LOCAL || apiProviderType == ApiProviderType.IFLOW || apiProviderType == ApiProviderType.NVIDIA || apiProviderType == ApiProviderType.LMSTUDIO || apiProviderType == ApiProviderType.OLLAMA || apiProviderType == ApiProviderType.FOUR_ROUTER || apiProviderType == ApiProviderType.NOUS_PORTAL) &&
+                        if ((apiProviderType == ApiProviderType.OPENAI || apiProviderType == ApiProviderType.OPENAI_RESPONSES || apiProviderType == ApiProviderType.OPENAI_RESPONSES_GENERIC || apiProviderType == ApiProviderType.OPENAI_GENERIC || apiProviderType == ApiProviderType.OPENAI_LOCAL || apiProviderType == ApiProviderType.IFLOW || apiProviderType == ApiProviderType.NVIDIA || apiProviderType == ApiProviderType.LMSTUDIO || apiProviderType == ApiProviderType.OLLAMA || apiProviderType == ApiProviderType.FOUR_ROUTER || apiProviderType == ApiProviderType.NOUS_PORTAL || apiProviderType == ApiProviderType.MIMO) &&
                                         modelsUrl.endsWith("/v1/models")) {
                             val fallbackUrl = modelsUrl.removeSuffix("/v1/models") + "/models"
                             AppLogger.w(TAG, "API请求失败，尝试兼容路径: $fallbackUrl")
@@ -313,6 +321,7 @@ object ModelListFetcher {
                                     ApiProviderType.OPENAI_LOCAL,
                                     ApiProviderType.DEEPSEEK,
                                     ApiProviderType.MOONSHOT,
+                                    ApiProviderType.MIMO,
                                     ApiProviderType.SILICONFLOW,
                                     ApiProviderType.IFLOW,
                                     ApiProviderType.DOUBAO,

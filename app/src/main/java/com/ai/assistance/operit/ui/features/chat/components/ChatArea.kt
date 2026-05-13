@@ -1152,7 +1152,7 @@ private fun hasDisplayableTimingStats(message: ChatMessage): Boolean {
 }
 
 private fun hasDisplayableMessageTimestamp(message: ChatMessage): Boolean {
-    return message.timestamp > 0L
+    return message.completedAt > 0L
 }
 
 private fun formatCompactDuration(durationMs: Long): String {
@@ -1168,9 +1168,9 @@ private fun formatCompactDuration(durationMs: Long): String {
     }
 }
 
-private fun formatCompactTimestamp(timestamp: Long): String {
-    if (timestamp <= 0L) return ""
-    return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
+private fun formatCompactTimestamp(completedAt: Long): String {
+    if (completedAt <= 0L) return ""
+    return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(completedAt))
 }
 
 @Composable
@@ -1206,10 +1206,10 @@ private fun MessageFooterBar(
             )
         }
     val messageTimeSummary =
-        remember(message.timestamp) {
+        remember(message.completedAt) {
             context.getString(
                 R.string.chat_message_timestamp_compact,
-                formatCompactTimestamp(message.timestamp),
+                formatCompactTimestamp(message.completedAt),
             )
         }
     val statsTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f)

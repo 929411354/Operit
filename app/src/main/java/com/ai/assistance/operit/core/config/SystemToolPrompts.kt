@@ -707,6 +707,8 @@ object SystemToolPrompts {
             category.tools.map { tool ->
                 mapOf(
                     "categoryName" to category.categoryName,
+                    "categoryHeader" to category.categoryHeader,
+                    "categoryFooter" to category.categoryFooter,
                     "name" to tool.name,
                     "description" to tool.description,
                     "parameters" to tool.parameters,
@@ -726,11 +728,80 @@ object SystemToolPrompts {
             }
         }
     }
+
+    private fun renderToolPromptFromAvailableTools(
+        availableTools: List<Map<String, Any?>>
+    ): String {
+        if (availableTools.isEmpty()) {
+            return ""
+        }
+        return buildToolPromptCategories(availableTools).joinToString("\n\n") { it.toString() }
+    }
+
+    private fun buildToolPromptCategories(
+        availableTools: List<Map<String, Any?>>
+    ): List<SystemToolPromptCategory> {
+        val categories = linkedMapOf<String, MutableToolPromptCategory>()
+        availableTools.forEach { item ->
+            val categoryName = item["categoryName"] as? String ?: return@forEach
+            val toolName = item["name"] as? String ?: return@forEach
+            val description = item["description"] as? String ?: return@forEach
+            val category = categories.getOrPut(categoryName) {
+                MutableToolPromptCategory(
+                    categoryName = categoryName,
+                    categoryHeader = item["categoryHeader"] as? String ?: "",
+                    categoryFooter = item["categoryFooter"] as? String ?: ""
+                )
+            }
+            category.tools.add(
+                ToolPrompt(
+                    name = toolName,
+                    description = description,
+                    parameters = item["parameters"] as? String ?: "",
+                    parametersStructured = parseToolParameterSchemas(item["parametersStructured"]),
+                    details = item["details"] as? String ?: "",
+                    notes = item["notes"] as? String ?: ""
+                )
+            )
+        }
+        return categories.values.map { category ->
+            SystemToolPromptCategory(
+                categoryName = category.categoryName,
+                categoryHeader = category.categoryHeader,
+                tools = category.tools,
+                categoryFooter = category.categoryFooter
+            )
+        }
+    }
+
+    private fun parseToolParameterSchemas(value: Any?): List<ToolParameterSchema> {
+        val items = value as? List<*> ?: return emptyList()
+        return items.mapNotNull { item ->
+            val parameter = item as? Map<*, *> ?: return@mapNotNull null
+            val name = parameter["name"] as? String ?: return@mapNotNull null
+            val description = parameter["description"] as? String ?: return@mapNotNull null
+            ToolParameterSchema(
+                name = name,
+                type = parameter["type"] as? String ?: "string",
+                description = description,
+                required = parameter["required"] as? Boolean ?: true,
+                default = (parameter["default"] as? String) ?: parameter["default"]?.toString()
+            )
+        }
+    }
+
+    private data class MutableToolPromptCategory(
+        val categoryName: String,
+        val categoryHeader: String,
+        val categoryFooter: String,
+        val tools: MutableList<ToolPrompt> = mutableListOf()
+    )
     
     /**
      * 生成完整的工具提示词文本（英文）
      */
     fun generateToolsPromptEn(
+        chatId: String? = null,
         hasBackendImageRecognition: Boolean = false,
         includeMemoryTools: Boolean = true,
         chatModelHasDirectImage: Boolean = false,
@@ -765,11 +836,13 @@ object SystemToolPrompts {
             )
                 .filter { it.categoryName != "Memory and Memory Library Tools" }
         }
-        val availableTools = buildToolHookPayload(categories)
+        val visibleCategories = applyToolVisibility(categories, toolVisibility)
+        val availableTools = buildToolHookPayload(visibleCategories)
         val beforeContext =
             dispatchToolPromptComposeHooks(
                 PromptHookContext(
                     stage = "before_compose_tool_prompt",
+                    chatId = chatId,
                     useEnglish = true,
                     availableTools = availableTools,
                     metadata =
@@ -786,30 +859,37 @@ object SystemToolPrompts {
                         ) + hookMetadata
                 )
             )
+        var currentAvailableTools = beforeContext.availableTools
         var prompt = beforeContext.toolPrompt
-            ?: applyToolVisibility(categories, toolVisibility).joinToString("\n\n") { it.toString() }
+            ?: renderToolPromptFromAvailableTools(currentAvailableTools)
         val filterContext =
             dispatchToolPromptComposeHooks(
                 beforeContext.copy(
                     stage = "filter_tool_prompt_items",
-                    toolPrompt = prompt
+                    toolPrompt = prompt,
+                    availableTools = currentAvailableTools
                 )
             )
-        prompt = filterContext.toolPrompt ?: prompt
+        currentAvailableTools = filterContext.availableTools
+        prompt = filterContext.toolPrompt
+            ?: renderToolPromptFromAvailableTools(currentAvailableTools)
         val afterContext =
             dispatchToolPromptComposeHooks(
                 filterContext.copy(
                     stage = "after_compose_tool_prompt",
-                    toolPrompt = prompt
+                    toolPrompt = prompt,
+                    availableTools = currentAvailableTools
                 )
             )
-        return afterContext.toolPrompt ?: prompt
+        return afterContext.toolPrompt
+            ?: renderToolPromptFromAvailableTools(afterContext.availableTools)
     }
     
     /**
      * 生成完整的工具提示词文本（中文）
      */
     fun generateToolsPromptCn(
+        chatId: String? = null,
         hasBackendImageRecognition: Boolean = false,
         includeMemoryTools: Boolean = true,
         chatModelHasDirectImage: Boolean = false,
@@ -844,11 +924,13 @@ object SystemToolPrompts {
             )
                 .filter { it.categoryName != "记忆与记忆库工具" }
         }
-        val availableTools = buildToolHookPayload(categories)
+        val visibleCategories = applyToolVisibility(categories, toolVisibility)
+        val availableTools = buildToolHookPayload(visibleCategories)
         val beforeContext =
             dispatchToolPromptComposeHooks(
                 PromptHookContext(
                     stage = "before_compose_tool_prompt",
+                    chatId = chatId,
                     useEnglish = false,
                     availableTools = availableTools,
                     metadata =
@@ -865,23 +947,29 @@ object SystemToolPrompts {
                         ) + hookMetadata
                 )
             )
+        var currentAvailableTools = beforeContext.availableTools
         var prompt = beforeContext.toolPrompt
-            ?: applyToolVisibility(categories, toolVisibility).joinToString("\n\n") { it.toString() }
+            ?: renderToolPromptFromAvailableTools(currentAvailableTools)
         val filterContext =
             dispatchToolPromptComposeHooks(
                 beforeContext.copy(
                     stage = "filter_tool_prompt_items",
-                    toolPrompt = prompt
+                    toolPrompt = prompt,
+                    availableTools = currentAvailableTools
                 )
             )
-        prompt = filterContext.toolPrompt ?: prompt
+        currentAvailableTools = filterContext.availableTools
+        prompt = filterContext.toolPrompt
+            ?: renderToolPromptFromAvailableTools(currentAvailableTools)
         val afterContext =
             dispatchToolPromptComposeHooks(
                 filterContext.copy(
                     stage = "after_compose_tool_prompt",
-                    toolPrompt = prompt
+                    toolPrompt = prompt,
+                    availableTools = currentAvailableTools
                 )
             )
-        return afterContext.toolPrompt ?: prompt
+        return afterContext.toolPrompt
+            ?: renderToolPromptFromAvailableTools(afterContext.availableTools)
     }
 }

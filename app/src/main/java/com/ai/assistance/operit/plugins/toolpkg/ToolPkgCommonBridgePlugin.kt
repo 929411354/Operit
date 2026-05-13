@@ -648,6 +648,8 @@ private object ToolPkgInputMenuToggleBridgePlugin : InputMenuTogglePlugin {
     private var hookRegistryVersion = 0L
     @Volatile
     private var lastHookRegistryVersion = -1L
+    @Volatile
+    private var lastParamsCacheKey: String? = null
     private val refreshFlag = AtomicBoolean(false)
 
     internal fun replaceHooks(updatedHooks: List<ToolPkgInputMenuToggleHookRegistration>) {
@@ -657,6 +659,7 @@ private object ToolPkgInputMenuToggleBridgePlugin : InputMenuTogglePlugin {
         hooks = updatedHooks
         specsCache = emptyList()
         hasLoadedOnce = false
+        lastParamsCacheKey = null
         hookRegistryVersion += 1L
         InputMenuTogglePluginRegistry.notifyChanged()
     }
@@ -665,14 +668,30 @@ private object ToolPkgInputMenuToggleBridgePlugin : InputMenuTogglePlugin {
         params: InputMenuToggleHookParams
     ): List<InputMenuToggleDefinition> {
         val registryVersion = hookRegistryVersion
+        val paramsCacheKey = buildCacheKey(params)
+        val shouldRefreshForParams = lastParamsCacheKey != paramsCacheKey
+        if (shouldRefreshForParams) {
+            specsCache = emptyList()
+            hasLoadedOnce = false
+        }
         val cachedSpecs = specsCache
-        if (!hasLoadedOnce || lastHookRegistryVersion != registryVersion) {
-            triggerRefresh(params = params)
+        if (shouldRefreshForParams || !hasLoadedOnce || lastHookRegistryVersion != registryVersion) {
+            triggerRefresh(
+                params = params,
+                registryVersion = registryVersion,
+                paramsCacheKey = paramsCacheKey
+            )
             if (cachedSpecs.isEmpty()) {
                 return listOf(createLoadingToggle())
             }
         }
         return buildToggleDefinitions(cachedSpecs, params)
+    }
+
+    private fun buildCacheKey(params: InputMenuToggleHookParams): String {
+        val runtime = params.runtime.orEmpty()
+        val chatId = params.chatId.orEmpty()
+        return "$runtime|$chatId"
     }
 
     private fun buildToggleDefinitions(
@@ -688,6 +707,7 @@ private object ToolPkgInputMenuToggleBridgePlugin : InputMenuTogglePlugin {
                 id = spec.id,
                 title = spec.title,
                 description = spec.description,
+                icon = spec.icon,
                 isChecked = resolvedChecked,
                 slot = spec.slot,
                 onToggle = {
@@ -706,10 +726,16 @@ private object ToolPkgInputMenuToggleBridgePlugin : InputMenuTogglePlugin {
                             eventPayload =
                                 mapOf(
                                     "action" to "toggle",
-                                    "toggleId" to spec.id
+                                    "toggleId" to spec.id,
+                                    "chatId" to params.chatId,
+                                    "runtime" to params.runtime
                                 )
                         )
-                        triggerRefresh(params = params)
+                        triggerRefresh(
+                            params = params,
+                            registryVersion = hookRegistryVersion,
+                            paramsCacheKey = buildCacheKey(params)
+                        )
                     }
                 }
             )
@@ -727,7 +753,11 @@ private object ToolPkgInputMenuToggleBridgePlugin : InputMenuTogglePlugin {
         )
     }
 
-    private fun triggerRefresh(params: InputMenuToggleHookParams) {
+    private fun triggerRefresh(
+        params: InputMenuToggleHookParams,
+        registryVersion: Long,
+        paramsCacheKey: String
+    ) {
         if (!refreshFlag.compareAndSet(false, true)) {
             return
         }
@@ -741,6 +771,8 @@ private object ToolPkgInputMenuToggleBridgePlugin : InputMenuTogglePlugin {
                         }
                 specsCache = resolved
                 hasLoadedOnce = true
+                lastHookRegistryVersion = registryVersion
+                lastParamsCacheKey = paramsCacheKey
             } finally {
                 refreshFlag.set(false)
                 InputMenuTogglePluginRegistry.notifyChanged()
@@ -762,7 +794,9 @@ private object ToolPkgInputMenuToggleBridgePlugin : InputMenuTogglePlugin {
                     inlineFunctionSource = hook.functionSource,
                     eventPayload =
                         mapOf(
-                            "action" to "create"
+                            "action" to "create",
+                            "chatId" to params.chatId,
+                            "runtime" to params.runtime
                         )
                 )
             val value =
@@ -794,7 +828,6 @@ private object ToolPkgInputMenuToggleBridgePlugin : InputMenuTogglePlugin {
                 )
             )
         }
-        lastHookRegistryVersion = hookRegistryVersion
         return resolved
     }
 
@@ -806,6 +839,7 @@ private object ToolPkgInputMenuToggleBridgePlugin : InputMenuTogglePlugin {
         val id: String,
         val title: String,
         val description: String,
+        val icon: String?,
         val isChecked: Boolean,
         val slot: String?
     )
@@ -841,6 +875,7 @@ private object ToolPkgInputMenuToggleBridgePlugin : InputMenuTogglePlugin {
                     id = id,
                     title = title,
                     description = item.optString("description").trim(),
+                    icon = item.optString("icon").trim().takeIf { it.isNotEmpty() },
                     isChecked = item.optBoolean("isChecked", false),
                     slot = item.optString("slot").trim().takeIf { it.isNotEmpty() }
                 )
@@ -869,6 +904,7 @@ object ToolPkgCommonBridgePlugin : OperitPlugin {
         ToolPkgSummaryHookBridge.register()
         ToolPkgToolLifecycleBridge.register()
         ToolPkgChatInputHookBridge.register()
+        ToolPkgChatViewHookBridge.register()
         ToolPkgAiProviderRegistry.register()
 
         val manager = toolPkgPackageManager()

@@ -336,7 +336,7 @@ function registerToolPkg() {
             zh: "世界书管理",
             en: "World Book Manager"
         },
-        icon: "Book",
+        icon: Icons.Book,
         order: 210
     });
     ToolPkg.registerSystemPromptComposeHook({

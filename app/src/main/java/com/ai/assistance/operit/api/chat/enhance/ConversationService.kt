@@ -495,6 +495,7 @@ class ConversationService(
                 val systemPrompt = SystemPromptConfig.getSystemPromptWithCustomPrompts(
                     context = context,
                     packageManager = packageManager,
+                    chatId = chatId,
                     workspacePath = workspacePath,
                     workspaceEnv = workspaceEnv,
                     safBookmarkNames = safBookmarkNames,

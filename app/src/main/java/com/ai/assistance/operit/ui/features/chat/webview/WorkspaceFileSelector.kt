@@ -111,6 +111,8 @@ fun MentionSuggestionPanel(
     val chatHistories by viewModel.chatHistories.collectAsState()
     val currentChatId by viewModel.currentChatId.collectAsState()
     val searchQuery by viewModel.mentionSearchQuery.collectAsState()
+    val suggestionTriggerChar by viewModel.mentionSuggestionTriggerChar.collectAsState()
+    val showFileSuggestions = suggestionTriggerChar != '/'
     val currentChat = chatHistories.find { it.id == currentChatId }
     val workspacePath = currentChat?.workspace
     val workspaceDir = remember(workspacePath) { workspacePath?.let(::File) }
@@ -143,18 +145,23 @@ fun MentionSuggestionPanel(
             initialValue = WorkspaceFileSuggestionLoadState.Loading,
             key1 = workspacePath,
             key2 = searchQuery,
+            key3 = showFileSuggestions,
         ) {
-            value = WorkspaceFileSuggestionLoadState.Loading
-            value =
-                WorkspaceFileSuggestionLoadState.Ready(
-                    if (workspaceDir != null && workspaceDir.exists() && workspaceDir.isDirectory) {
-                        withContext(Dispatchers.IO) {
-                            loadWorkspaceFileSuggestions(workspaceDir, searchQuery)
-                        }
-                    } else {
-                        emptyList()
-                    },
-                )
+            if (!showFileSuggestions) {
+                value = WorkspaceFileSuggestionLoadState.Ready(emptyList())
+            } else {
+                value = WorkspaceFileSuggestionLoadState.Loading
+                value =
+                    WorkspaceFileSuggestionLoadState.Ready(
+                        if (workspaceDir != null && workspaceDir.exists() && workspaceDir.isDirectory) {
+                            withContext(Dispatchers.IO) {
+                                loadWorkspaceFileSuggestions(workspaceDir, searchQuery)
+                            }
+                        } else {
+                            emptyList()
+                        },
+                    )
+            }
         }
 
     val colors = MaterialTheme.colorScheme
@@ -268,71 +275,73 @@ fun MentionSuggestionPanel(
                     }
             }
 
-            item {
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    color = colors.outlineVariant.copy(alpha = 0.32f),
-                )
-            }
-
-            item {
-                MentionSuggestionSectionHeader(
-                    title = context.getString(R.string.mention_selector_files_section),
-                )
-            }
-
-            when {
-                workspacePath.isNullOrBlank() -> {
-                    item {
-                        MentionSuggestionEmptyRow(
-                            text = context.getString(R.string.chat_not_bound_to_workspace),
-                        )
-                    }
+            if (showFileSuggestions) {
+                item {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        color = colors.outlineVariant.copy(alpha = 0.32f),
+                    )
                 }
-                workspaceDir == null || !workspaceDir.exists() || !workspaceDir.isDirectory -> {
-                    item {
-                        MentionSuggestionEmptyRow(
-                            text = context.getString(R.string.workspace_directory_invalid),
-                        )
-                    }
+
+                item {
+                    MentionSuggestionSectionHeader(
+                        title = context.getString(R.string.mention_selector_files_section),
+                    )
                 }
-                else -> {
-                    when (val suggestionsState = fileSuggestionState) {
-                        WorkspaceFileSuggestionLoadState.Loading -> {
-                            item { MentionSuggestionLoadingRow() }
+
+                when {
+                    workspacePath.isNullOrBlank() -> {
+                        item {
+                            MentionSuggestionEmptyRow(
+                                text = context.getString(R.string.chat_not_bound_to_workspace),
+                            )
                         }
-                        is WorkspaceFileSuggestionLoadState.Ready -> {
-                            val suggestions = suggestionsState.suggestions
-                            if (suggestions.isEmpty()) {
-                                item {
-                                    MentionSuggestionEmptyRow(
-                                        text =
-                                            if (searchQuery.isBlank()) {
-                                                context.getString(R.string.mention_selector_files_idle)
-                                            } else {
-                                                context.getString(R.string.mention_selector_files_empty)
-                                            },
-                                    )
-                                }
-                            } else {
-                                items(items = suggestions, key = { it.relativePath }) { suggestion ->
-                                    MentionSuggestionFileRow(
-                                        icon =
-                                            if (suggestion.isDirectory) {
-                                                Icons.Default.Folder
-                                            } else {
-                                                Icons.Default.Description
-                                            },
-                                        iconTint =
-                                            if (suggestion.isDirectory) {
-                                                colors.secondary
-                                            } else {
-                                                colors.primary
-                                            },
-                                        title = suggestion.displayName,
-                                        detail = suggestion.parentPath,
-                                        onClick = { onFileSelected(suggestion.relativePath) },
-                                    )
+                    }
+                    workspaceDir == null || !workspaceDir.exists() || !workspaceDir.isDirectory -> {
+                        item {
+                            MentionSuggestionEmptyRow(
+                                text = context.getString(R.string.workspace_directory_invalid),
+                            )
+                        }
+                    }
+                    else -> {
+                        when (val suggestionsState = fileSuggestionState) {
+                            WorkspaceFileSuggestionLoadState.Loading -> {
+                                item { MentionSuggestionLoadingRow() }
+                            }
+                            is WorkspaceFileSuggestionLoadState.Ready -> {
+                                val suggestions = suggestionsState.suggestions
+                                if (suggestions.isEmpty()) {
+                                    item {
+                                        MentionSuggestionEmptyRow(
+                                            text =
+                                                if (searchQuery.isBlank()) {
+                                                    context.getString(R.string.mention_selector_files_idle)
+                                                } else {
+                                                    context.getString(R.string.mention_selector_files_empty)
+                                                },
+                                        )
+                                    }
+                                } else {
+                                    items(items = suggestions, key = { it.relativePath }) { suggestion ->
+                                        MentionSuggestionFileRow(
+                                            icon =
+                                                if (suggestion.isDirectory) {
+                                                    Icons.Default.Folder
+                                                } else {
+                                                    Icons.Default.Description
+                                                },
+                                            iconTint =
+                                                if (suggestion.isDirectory) {
+                                                    colors.secondary
+                                                } else {
+                                                    colors.primary
+                                                },
+                                            title = suggestion.displayName,
+                                            detail = suggestion.parentPath,
+                                            onClick = { onFileSelected(suggestion.relativePath) },
+                                        )
+                                    }
                                 }
                             }
                         }

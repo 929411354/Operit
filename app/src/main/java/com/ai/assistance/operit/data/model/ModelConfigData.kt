@@ -19,6 +19,7 @@ enum class ApiProviderType {
         ZHIPU, // 智谱AI (ChatGLM系列)
         BAICHUAN, // 百川大模型
         MOONSHOT, // 月之暗面大模型
+        MIMO, // Xiaomi MiMo
         DEEPSEEK, // Deepseek大模型
         MISTRAL, // Mistral AI (Codestral等)
         SILICONFLOW, // 硅基流动

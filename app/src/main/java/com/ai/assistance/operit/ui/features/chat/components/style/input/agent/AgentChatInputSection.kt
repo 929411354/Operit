@@ -131,6 +131,7 @@ import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.data.preferences.MemorySearchSettingsPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.repository.MemoryAutoSaveCandidateRepository
+import com.ai.assistance.operit.ui.common.icons.MaterialIconNameResolver
 import com.ai.assistance.operit.ui.common.animations.SimpleAnimatedVisibility
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentChip
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentSelectorPopupPanel
@@ -198,8 +199,10 @@ fun AgentChatInputSection(
     onThinkingQualityLevelChange: (Int) -> Unit = {},
     enableMaxContextMode: Boolean = false,
     onToggleEnableMaxContextMode: () -> Unit = {},
+    currentChatId: String?,
     featureStates: Map<String, Boolean> = emptyMap(),
     onToggleFeature: (String) -> Unit = {},
+    inputMenuRuntime: String = "main",
     permissionLevel: PermissionLevel = PermissionLevel.ASK,
     onTogglePermission: () -> Unit = {},
     enableMemoryAutoUpdate: Boolean = false,
@@ -733,8 +736,11 @@ fun AgentChatInputSection(
 
             if (attachments.isNotEmpty()) {
                 LazyRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .padding(start = 12.dp, end = 12.dp, top = 0.dp, bottom = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.Bottom,
                 ) {
                     items(attachments) { attachment ->
                         AttachmentChip(
@@ -1398,8 +1404,10 @@ fun AgentChatInputSection(
                 onToggleEnableMaxContextMode = onToggleEnableMaxContextMode,
                 baseContextLengthInK = baseContextLengthInK,
                 maxContextLengthInK = maxContextLengthInK,
+                currentChatId = currentChatId,
                 featureStates = featureStates,
                 onToggleFeature = onToggleFeature,
+                inputMenuRuntime = inputMenuRuntime,
                 onSelectModel = onSelectModel,
                 onManageModels = {
                     showModelSelectorPopup.value = false
@@ -1420,8 +1428,10 @@ fun AgentChatInputSection(
                 },
                 enableMemoryAutoUpdate = enableMemoryAutoUpdate,
                 onToggleMemoryAutoUpdate = onToggleMemoryAutoUpdate,
+                currentChatId = currentChatId,
                 featureStates = featureStates,
                 onToggleFeature = onToggleFeature,
+                inputMenuRuntime = inputMenuRuntime,
                 isAutoReadEnabled = isAutoReadEnabled,
                 onToggleAutoRead = onToggleAutoRead,
                 permissionLevel = permissionLevel,
@@ -1479,8 +1489,10 @@ private fun AgentModelSelectorPopup(
     onToggleEnableMaxContextMode: () -> Unit,
     baseContextLengthInK: Float,
     maxContextLengthInK: Float,
+    currentChatId: String?,
     featureStates: Map<String, Boolean>,
     onToggleFeature: (String) -> Unit,
+    inputMenuRuntime: String,
     onSelectModel: (String, Int) -> Unit,
     onManageModels: () -> Unit,
     onDismiss: () -> Unit,
@@ -1494,8 +1506,10 @@ private fun AgentModelSelectorPopup(
         InputMenuTogglePluginRegistry.createToggles(
             params = InputMenuToggleHookParams(
                 context = context,
+                chatId = currentChatId,
                 featureStates = featureStates,
-                onToggleFeature = onToggleFeature
+                onToggleFeature = onToggleFeature,
+                runtime = inputMenuRuntime
             )
         )
     }
@@ -2234,8 +2248,10 @@ private fun AgentExtraSettingsPopup(
     onManageMemory: () -> Unit,
     enableMemoryAutoUpdate: Boolean,
     onToggleMemoryAutoUpdate: () -> Unit,
+    currentChatId: String?,
     featureStates: Map<String, Boolean>,
     onToggleFeature: (String) -> Unit,
+    inputMenuRuntime: String,
     isAutoReadEnabled: Boolean,
     onToggleAutoRead: () -> Unit,
     permissionLevel: PermissionLevel,
@@ -2263,8 +2279,10 @@ private fun AgentExtraSettingsPopup(
         InputMenuTogglePluginRegistry.createToggles(
             params = InputMenuToggleHookParams(
                 context = context,
+                chatId = currentChatId,
                 featureStates = featureStates,
-                onToggleFeature = onToggleFeature
+                onToggleFeature = onToggleFeature,
+                runtime = inputMenuRuntime
             )
         )
     }
@@ -2794,9 +2812,10 @@ private fun AgentInputMenuToggleSettingItem(
     val toggleTitle =
         if (toggle.titleRes != 0) stringResource(toggle.titleRes)
         else toggle.title.orEmpty()
+    val toggleIcon = MaterialIconNameResolver.resolveOrDefault(toggle.icon, Icons.Outlined.Hub)
     AgentSimpleToggleSettingItem(
         title = toggleTitle,
-        icon = Icons.Outlined.Hub,
+        icon = toggleIcon,
         isChecked = toggle.isChecked,
         isEnabled = toggle.isEnabled,
         onToggle = toggle.onToggle,

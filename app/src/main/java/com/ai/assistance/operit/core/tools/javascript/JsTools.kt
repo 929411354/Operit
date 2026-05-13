@@ -1218,6 +1218,7 @@ fun getJsToolsDefinition(): String {
                     if (chatId) params.chat_id = chatId;
                     if (roleCardId) params.role_card_id = roleCardId;
                     if (senderName) params.sender_name = senderName;
+                    if (options.runtime) params.runtime = String(options.runtime);
                     if (options.persist_turn !== undefined) params.persist_turn = options.persist_turn;
                     if (options.notify_reply !== undefined) params.notify_reply = options.notify_reply;
                     if (options.hide_user_message !== undefined) params.hide_user_message = options.hide_user_message;
@@ -1231,6 +1232,7 @@ fun getJsToolsDefinition(): String {
                     if (chatId) params.chat_id = chatId;
                     if (roleCardId) params.role_card_id = roleCardId;
                     if (senderName) params.sender_name = senderName;
+                    if (options.runtime) params.runtime = String(options.runtime);
                     if (options.persist_turn !== undefined) params.persist_turn = options.persist_turn;
                     if (options.notify_reply !== undefined) params.notify_reply = options.notify_reply;
                     if (options.hide_user_message !== undefined) params.hide_user_message = options.hide_user_message;

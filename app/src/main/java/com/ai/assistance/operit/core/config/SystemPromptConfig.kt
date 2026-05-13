@@ -79,6 +79,7 @@ PACKAGE SYSTEM
   - 将目标工具参数放入 params（JSON对象）"""
 
     private fun getAvailableToolsEn(
+        chatId: String?,
         hasImageRecognition: Boolean,
         chatModelHasDirectImage: Boolean,
         hasAudioRecognition: Boolean,
@@ -91,6 +92,7 @@ PACKAGE SYSTEM
         dispatchToolPromptComposeHooks: (PromptHookContext) -> PromptHookContext = PromptHookRegistry::dispatchToolPromptComposeHooks
     ): String {
         return SystemToolPrompts.generateToolsPromptEn(
+            chatId = chatId,
             hasBackendImageRecognition = hasImageRecognition,
             includeMemoryTools = false,
             chatModelHasDirectImage = chatModelHasDirectImage,
@@ -110,6 +112,7 @@ PACKAGE SYSTEM
     }
 
     private fun getAvailableToolsCn(
+        chatId: String?,
         hasImageRecognition: Boolean,
         chatModelHasDirectImage: Boolean,
         hasAudioRecognition: Boolean,
@@ -122,6 +125,7 @@ PACKAGE SYSTEM
         dispatchToolPromptComposeHooks: (PromptHookContext) -> PromptHookContext = PromptHookRegistry::dispatchToolPromptComposeHooks
     ): String {
         return SystemToolPrompts.generateToolsPromptCn(
+            chatId = chatId,
             hasBackendImageRecognition = hasImageRecognition,
             includeMemoryTools = false,
             chatModelHasDirectImage = chatModelHasDirectImage,
@@ -241,6 +245,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
   suspend fun getSystemPrompt(
           context: Context,
           packageManager: PackageManager,
+          chatId: String? = null,
           workspacePath: String? = null,
           workspaceEnv: String? = null,
           safBookmarkNames: List<String> = emptyList(),
@@ -368,6 +373,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
     val availableToolsEn = if (useToolCallApi || toolExposureMode == ToolExposureMode.CLI) "" else (
         getMemoryToolsEn(toolVisibility) +
             getAvailableToolsEn(
+                chatId = chatId,
                 hasImageRecognition = hasImageRecognition,
                 chatModelHasDirectImage = chatModelHasDirectImage,
                 hasAudioRecognition = hasAudioRecognition,
@@ -383,6 +389,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
     val availableToolsCn = if (useToolCallApi || toolExposureMode == ToolExposureMode.CLI) "" else (
         getMemoryToolsCn(toolVisibility) +
             getAvailableToolsCn(
+                chatId = chatId,
                 hasImageRecognition = hasImageRecognition,
                 chatModelHasDirectImage = chatModelHasDirectImage,
                 hasAudioRecognition = hasAudioRecognition,
@@ -550,6 +557,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
   suspend fun getSystemPromptWithCustomPrompts(
           context: Context,
           packageManager: PackageManager,
+          chatId: String?,
           workspacePath: String?,
           workspaceEnv: String? = null,
           safBookmarkNames: List<String> = emptyList(),
@@ -580,6 +588,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
         dispatchSystemPromptComposeHooks(
             PromptHookContext(
                 stage = "before_compose_system_prompt",
+                chatId = chatId,
                 useEnglish = useEnglish,
                 metadata =
                     mapOf(
@@ -612,6 +621,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
         beforeContext.systemPrompt ?: getSystemPrompt(
             context = context,
             packageManager = packageManager,
+            chatId = chatId,
             workspacePath = workspacePath,
             workspaceEnv = workspaceEnv,
             safBookmarkNames = safBookmarkNames,
@@ -667,6 +677,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
     return getSystemPrompt(
         context = context,
         packageManager = packageManager,
+        chatId = null,
         workspacePath = null,
         workspaceEnv = null,
         safBookmarkNames = emptyList(),

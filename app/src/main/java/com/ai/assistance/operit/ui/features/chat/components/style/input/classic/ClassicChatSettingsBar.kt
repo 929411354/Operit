@@ -18,11 +18,10 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Portrait
 import androidx.compose.material.icons.outlined.Speed
-import androidx.compose.material.icons.outlined.Hub
-import androidx.compose.material.icons.outlined.Whatshot
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Security
@@ -76,6 +75,7 @@ import com.ai.assistance.operit.data.model.getModelList
 import com.ai.assistance.operit.data.model.getValidModelIndex
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.repository.MemoryAutoSaveCandidateRepository
+import com.ai.assistance.operit.ui.common.icons.MaterialIconNameResolver
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuToggleHookParams
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuToggleDefinition
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuTogglePluginRegistry
@@ -92,8 +92,10 @@ import com.ai.assistance.operit.R
 @Composable
 fun ClassicChatSettingsBar(
     modifier: Modifier = Modifier,
+    currentChatId: String?,
     featureStates: Map<String, Boolean>,
     onToggleFeature: (String) -> Unit,
+    inputMenuRuntime: String = "main",
     permissionLevel: PermissionLevel,
     onTogglePermission: () -> Unit,
     enableThinkingMode: Boolean,
@@ -198,8 +200,10 @@ fun ClassicChatSettingsBar(
         InputMenuTogglePluginRegistry.createToggles(
             params = InputMenuToggleHookParams(
                 context = context,
+                chatId = currentChatId,
                 featureStates = featureStates,
-                onToggleFeature = onToggleFeature
+                onToggleFeature = onToggleFeature,
+                runtime = inputMenuRuntime
             )
         )
     }
@@ -985,9 +989,10 @@ private fun InputMenuToggleSettingItem(
     val toggleTitle =
         if (toggle.titleRes != 0) stringResource(toggle.titleRes)
         else toggle.title.orEmpty()
+    val toggleIcon = MaterialIconNameResolver.resolveOrDefault(toggle.icon, Icons.Outlined.Hub)
     SettingItem(
         title = toggleTitle,
-        icon = Icons.Outlined.Hub,
+        icon = toggleIcon,
         iconTint =
             if (!toggle.isEnabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
             else if (toggle.isChecked) MaterialTheme.colorScheme.primary

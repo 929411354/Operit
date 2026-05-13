@@ -195,6 +195,15 @@ open class OpenAIProvider(
     ) {
     }
 
+    protected open fun applyAuthenticationHeaders(
+        builder: Request.Builder,
+        currentApiKey: String
+    ) {
+        if (currentApiKey.isNotEmpty()) {
+            builder.addHeader("Authorization", "Bearer $currentApiKey")
+        }
+    }
+
      override fun cancelStreaming() {
          isManuallyCancelled = true
          runCatching { activeResponse?.close() }
@@ -706,6 +715,15 @@ open class OpenAIProvider(
         )
     }
 
+    protected fun calculateAndStoreInputTokens(
+        providerReadyHistory: List<PromptTurn>,
+        toolsJson: String? = null,
+        preserveThinkInHistory: Boolean = false
+    ): Int {
+        val comparableHistory = buildComparableHistory(providerReadyHistory, preserveThinkInHistory)
+        return tokenCacheManager.calculateInputTokens(comparableHistory, toolsJson)
+    }
+
     /**
      * 构建content字段（可能是字符串或数组）
      * @param text 要处理的文本内容
@@ -835,8 +853,12 @@ open class OpenAIProvider(
         val providerReadyHistory = prepareHistoryForProvider(chatHistory, useToolCall)
 
         // 使用TokenCacheManager计算token数量（包含工具定义）
-        val comparableHistory = buildComparableHistory(providerReadyHistory, preserveThinkInHistory)
-        val tokenCount = tokenCacheManager.calculateInputTokens(comparableHistory, toolsJson)
+        val tokenCount =
+            calculateAndStoreInputTokens(
+                providerReadyHistory,
+                toolsJson,
+                preserveThinkInHistory
+            )
         val effectiveHistory = providerReadyHistory
 
         var queuedAssistantToolText: String? = null
@@ -1592,9 +1614,7 @@ open class OpenAIProvider(
             .tag(LlmRequestTraceContext::class.java, traceContext)
             .addHeader("Content-Type", "application/json")
 
-        if (currentApiKey.isNotEmpty()) {
-            builder.addHeader("Authorization", "Bearer $currentApiKey")
-        }
+        applyAuthenticationHeaders(builder, currentApiKey)
 
         // 添加自定义请求头
         customHeaders.forEach { (key, value) ->

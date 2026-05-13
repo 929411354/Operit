@@ -1346,67 +1346,103 @@ class MessageCoordinationDelegate(
             return
         }
         coroutineScope.launch {
-            val enhancedAiService = getEnhancedAiService()
-            if (enhancedAiService == null) {
-                uiStateDelegate.showToast(context.getString(R.string.chat_ai_service_unavailable_memory))
-                return@launch
-            }
             val currentChatId = chatHistoryDelegate.currentChatId.value
             val runtimeHistory =
                 currentChatId?.let { chatHistoryDelegate.getRuntimeChatHistory(it) }.orEmpty()
-            if (runtimeHistory.isEmpty()) {
-                uiStateDelegate.showToast(context.getString(R.string.chat_history_empty_no_update))
-                return@launch
-            }
+            saveMessagesToMemory(
+                sourceMessages = runtimeHistory,
+                currentChatId = currentChatId,
+                emptyToastMessage = context.getString(R.string.chat_history_empty_no_update)
+            )
+        }
+    }
 
-            _isUpdatingMemory.value = true
+    fun manuallyUpdateMemoryWithSelectedMessages(selectedMessages: List<ChatMessage>) {
+        if (_isUpdatingMemory.value) {
             uiStateDelegate.showToast(context.getString(R.string.chat_summarizing_memory))
+            return
+        }
+        coroutineScope.launch {
+            val currentChatId = chatHistoryDelegate.currentChatId.value
+            val userMessages =
+                selectedMessages
+                    .sortedBy { it.timestamp }
+                    .filter { it.sender == "user" }
+                    .filter { it.content.isNotBlank() }
 
-            try {
-                // Convert ChatMessage list to List<Pair<String, String>>
-                val history = runtimeHistory.map { it.sender to it.content }
-                // Get the last message content
-                val lastMessageContent = runtimeHistory.lastOrNull()?.content ?: ""
-                val roleCardId =
-                    resolveWindowEstimateRoleCardId(
-                        chatId = currentChatId,
-                        roleCardId = null
-                    )
-                val preferenceProfileIdOverride =
-                    roleCardId?.let { resolveRoleCardMemoryProfileOverride(it) }
+            saveMessagesToMemory(
+                sourceMessages = userMessages,
+                currentChatId = currentChatId,
+                emptyToastMessage = context.getString(R.string.chat_selected_messages_no_user_for_memory),
+                lastContentOverride = userMessages.joinToString("\n\n") { it.content.trim() }
+            )
+        }
+    }
 
-                enhancedAiService.saveConversationToMemoryAsync(
-                    conversationHistory = history,
-                    lastContent = lastMessageContent,
-                    preferenceProfileIdOverride = preferenceProfileIdOverride,
-                    onSuccess = {
-                        uiStateDelegate.showToast(context.getString(R.string.chat_memory_manually_updated))
-                        _isUpdatingMemory.value = false
-                    },
-                    onError = { e ->
-                        AppLogger.e(TAG, "手动更新记忆失败", e)
-                        uiStateDelegate.showToast(
-                            context.getString(
-                                R.string.chat_manual_update_memory_failed,
-                                e.message ?: ""
-                            )
+    private suspend fun saveMessagesToMemory(
+        sourceMessages: List<ChatMessage>,
+        currentChatId: String?,
+        emptyToastMessage: String,
+        lastContentOverride: String? = null
+    ) {
+        val enhancedAiService = getEnhancedAiService()
+        if (enhancedAiService == null) {
+            uiStateDelegate.showToast(context.getString(R.string.chat_ai_service_unavailable_memory))
+            return
+        }
+        if (sourceMessages.isEmpty()) {
+            uiStateDelegate.showToast(emptyToastMessage)
+            return
+        }
+
+        _isUpdatingMemory.value = true
+        uiStateDelegate.showToast(context.getString(R.string.chat_summarizing_memory))
+
+        try {
+            val history = sourceMessages.map { it.sender to it.content }
+            val lastMessageContent =
+                lastContentOverride?.takeIf { it.isNotBlank() }
+                    ?: sourceMessages.lastOrNull()?.content
+                    ?: ""
+            val roleCardId =
+                resolveWindowEstimateRoleCardId(
+                    chatId = currentChatId,
+                    roleCardId = null
+                )
+            val preferenceProfileIdOverride =
+                roleCardId?.let { resolveRoleCardMemoryProfileOverride(it) }
+
+            enhancedAiService.saveConversationToMemoryAsync(
+                conversationHistory = history,
+                lastContent = lastMessageContent,
+                preferenceProfileIdOverride = preferenceProfileIdOverride,
+                onSuccess = {
+                    uiStateDelegate.showToast(context.getString(R.string.chat_memory_manually_updated))
+                    _isUpdatingMemory.value = false
+                },
+                onError = { e ->
+                    AppLogger.e(TAG, "手动更新记忆失败", e)
+                    uiStateDelegate.showToast(
+                        context.getString(
+                            R.string.chat_manual_update_memory_failed,
+                            e.message ?: ""
                         )
-                        _isUpdatingMemory.value = false
-                    }
-                )
-            } catch (e: CancellationException) {
-                _isUpdatingMemory.value = false
-                throw e
-            } catch (e: Exception) {
-                _isUpdatingMemory.value = false
-                AppLogger.e(TAG, "手动更新记忆失败", e)
-                uiStateDelegate.showToast(
-                    context.getString(
-                        R.string.chat_manual_update_memory_failed,
-                        e.message ?: ""
                     )
+                    _isUpdatingMemory.value = false
+                }
+            )
+        } catch (e: CancellationException) {
+            _isUpdatingMemory.value = false
+            throw e
+        } catch (e: Exception) {
+            _isUpdatingMemory.value = false
+            AppLogger.e(TAG, "手动更新记忆失败", e)
+            uiStateDelegate.showToast(
+                context.getString(
+                    R.string.chat_manual_update_memory_failed,
+                    e.message ?: ""
                 )
-            }
+            )
         }
     }
 

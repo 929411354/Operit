@@ -138,6 +138,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit.Companion.Unspecified
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -155,6 +156,9 @@ import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslNode
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslParser
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslRenderResult
+import com.ai.assistance.operit.ui.common.displays.MarkdownTextComposable
+import com.ai.assistance.operit.ui.common.markdown.DefaultXmlRenderer
+import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
 import com.ai.assistance.operit.ui.components.CustomScaffold
 import com.ai.assistance.operit.ui.main.LocalTopBarTitleContent
 import com.ai.assistance.operit.ui.main.TopBarTitleContent
@@ -166,6 +170,8 @@ import com.ai.assistance.operit.ui.theme.getSystemFontFamily
 import com.ai.assistance.operit.ui.theme.loadCustomFontFamily
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.OperitPaths
+import com.ai.assistance.operit.util.stream.Stream
+import com.ai.assistance.operit.util.stream.stream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
@@ -1234,6 +1240,7 @@ fun RenderToolPkgComposeDslNode(
 internal val LocalComposeDslActionHandler = staticCompositionLocalOf<(String, Any?) -> Unit> {
     { _, _ -> }
 }
+internal val LocalComposeDslXmlStream = staticCompositionLocalOf<Stream<String>?> { null }
 internal val LocalComposeDslTextInputActionHandler =
     staticCompositionLocalOf<(String, String) -> Unit> {
         { _, _ -> }
@@ -1289,6 +1296,10 @@ internal fun renderComposeDslNode(
             renderWebViewNode(node, onAction, modifierResolver)
             return@CompositionLocalProvider
         }
+        if (normalizedType == "markdown") {
+            renderMarkdownNode(node, onAction, nodePath, modifierResolver)
+            return@CompositionLocalProvider
+        }
         val renderer = composeDslGeneratedNodeRendererRegistry[normalizedType]
         if (renderer != null) {
             renderer(node, onAction, nodePath, modifierResolver)
@@ -1298,6 +1309,91 @@ internal fun renderComposeDslNode(
             text = "Unsupported node: ${node.type}",
             style = MaterialTheme.typography.bodySmall
         )
+    }
+}
+
+@Composable
+internal fun renderMarkdownNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
+    val textColor = props.colorOrNull("color") ?: MaterialTheme.colorScheme.onSurface
+    val fontSize = props.floatOrNull("fontSize")?.sp ?: Unspecified
+    val streamTagName = props.stringOrNull("streamTagName")
+    val xmlStream = LocalComposeDslXmlStream.current
+    val markdownStream =
+        remember(xmlStream, streamTagName) {
+            if (xmlStream == null || streamTagName == null) {
+                null
+            } else {
+                createXmlTagBodyCharStream(xmlStream, streamTagName)
+            }
+        }
+
+    if (markdownStream != null) {
+        StreamMarkdownRenderer(
+            markdownStream = markdownStream,
+            modifier = modifier,
+            textColor = textColor,
+            fontSize = fontSize,
+            xmlRenderer = remember { DefaultXmlRenderer() },
+            enableDialogs = props.bool("enableDialogs", true),
+            fillMaxWidth = props.bool("fillMaxWidth", true)
+        )
+        return
+    }
+
+    MarkdownTextComposable(
+        text = props.string("text"),
+        textColor = textColor,
+        modifier = modifier,
+        fontSize = fontSize,
+        enableDialogs = props.bool("enableDialogs", true)
+    )
+}
+
+private fun createXmlTagBodyCharStream(
+    xmlStream: Stream<String>,
+    tagName: String
+): Stream<Char> = stream {
+    val endTag = "</$tagName>"
+    var startTagClosed = false
+    var reachedEndTag = false
+    val tailBuffer = StringBuilder()
+
+    xmlStream.collect { chunk ->
+        chunk.forEach { ch ->
+            if (reachedEndTag) {
+                return@forEach
+            }
+
+            if (!startTagClosed) {
+                if (ch == '>') {
+                    startTagClosed = true
+                }
+                return@forEach
+            }
+
+            tailBuffer.append(ch)
+
+            while (tailBuffer.length > endTag.length) {
+                emit(tailBuffer[0])
+                tailBuffer.deleteCharAt(0)
+            }
+
+            if (tailBuffer.length == endTag.length && tailBuffer.toString() == endTag) {
+                tailBuffer.setLength(0)
+                reachedEndTag = true
+            }
+        }
+    }
+
+    if (!reachedEndTag && tailBuffer.isNotEmpty()) {
+        tailBuffer.toString().forEach { emit(it) }
     }
 }
 
@@ -3378,20 +3474,11 @@ internal fun resolveColorValue(value: Any?): Color? {
 internal fun iconFromName(name: String): ImageVector {
     val iconKey = name.trim()
     require(iconKey.isNotEmpty()) { "icon name is blank" }
-
-    val pascalCaseName =
-        iconKey
-            .split(Regex("[^A-Za-z0-9]+"))
-            .filter { it.isNotBlank() }
-            .joinToString(separator = "") { segment ->
-                segment.replaceFirstChar { it.uppercaseChar() }
-            }
-
-    require(pascalCaseName.isNotEmpty()) { "icon name is invalid: $name" }
-
-    val iconKtClass = Class.forName("androidx.compose.material.icons.filled.${pascalCaseName}Kt")
-    val getterMethod = iconKtClass.getMethod("get$pascalCaseName", Icons.Default::class.java)
-    return getterMethod.invoke(null, Icons.Default) as ImageVector
+    return requireNotNull(
+        com.ai.assistance.operit.ui.common.icons.MaterialIconNameResolver.resolveOrNull(iconKey)
+    ) {
+        "icon name is invalid: $name"
+    }
 }
 
 @Composable

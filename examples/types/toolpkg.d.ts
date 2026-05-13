@@ -32,6 +32,7 @@ export namespace ToolPkg {
         | "xml_render"
         | "input_menu_toggle"
         | ChatInputEventName
+        | ChatViewEventName
         | "navigation_entry_action"
         | ToolLifecycleEventName
         | PromptInputEventName
@@ -99,6 +100,7 @@ export namespace ToolPkg {
         id: string;
         title: string;
         description?: string;
+        icon?: string;
         isChecked?: boolean;
         slot?: `${InputMenuToggleSlot}`;
     }
@@ -118,6 +120,11 @@ export namespace ToolPkg {
         | "input_changed"
         | "submit_requested"
         | "submitted";
+
+    export type ChatViewEventName =
+        | "view_opened"
+        | "view_updated"
+        | "view_closed";
 
     export interface ChatInputHookObjectResult extends JsonObject {
         action?: "allow" | "block" | "replace" | "consume";
@@ -157,6 +164,7 @@ export namespace ToolPkg {
     export type ToolPromptComposeEventName =
         | "before_compose_tool_prompt"
         | "filter_tool_prompt_items"
+        | "filter_tool_call_tools"
         | "after_compose_tool_prompt";
 
     export type PromptFinalizeEventName =
@@ -209,6 +217,26 @@ export namespace ToolPkg {
         resultJson?: JsonValue;
     }
 
+    export interface ToolPromptParameter extends JsonObject {
+        name: string;
+        type?: string;
+        description: string;
+        required?: boolean;
+        default?: JsonPrimitive;
+    }
+
+    export interface ToolPromptItem extends JsonObject {
+        categoryName: string;
+        categoryHeader?: string;
+        categoryFooter?: string;
+        name: string;
+        description: string;
+        parameters?: string;
+        details?: string;
+        notes?: string;
+        parametersStructured?: ToolPromptParameter[];
+    }
+
     export interface PromptHookObjectResult extends JsonObject {
         rawInput?: string;
         processedInput?: string;
@@ -216,6 +244,7 @@ export namespace ToolPkg {
         preparedHistory?: PromptTurn[];
         systemPrompt?: string;
         toolPrompt?: string;
+        availableTools?: ToolPromptItem[];
         metadata?: HookMetadata;
     }
 
@@ -241,7 +270,7 @@ export namespace ToolPkg {
         systemPrompt?: string;
         toolPrompt?: string;
         modelParameters?: JsonObject[];
-        availableTools?: JsonObject[];
+        availableTools?: ToolPromptItem[];
         metadata?: HookMetadata;
     }
 
@@ -389,6 +418,8 @@ export namespace ToolPkg {
     export interface InputMenuToggleEventPayload extends JsonObject {
         action?: "create" | "toggle" | string;
         toggleId?: string;
+        chatId?: string;
+        runtime?: string;
     }
 
     export interface ChatInputEventPayload extends JsonObject {
@@ -402,6 +433,15 @@ export namespace ToolPkg {
         inputStyle?: "classic" | "agent" | string;
         source?: "classic" | "agent" | "fullscreen" | "queue" | string;
         submitSource?: "send" | "button" | "ime_send" | "enter" | "queue" | string;
+    }
+
+    export interface ChatViewEventPayload extends JsonObject {
+        viewId?: string;
+        chatId?: string;
+        workspacePath?: string;
+        workspaceEnv?: string;
+        runtime?: string;
+        title?: string;
     }
 
     export interface NavigationEntryActionEventPayload extends JsonObject {
@@ -426,6 +466,9 @@ export namespace ToolPkg {
 
     export interface ChatInputHookEvent
         extends HookEventBase<ChatInputEventName, ChatInputEventPayload> {}
+
+    export interface ChatViewHookEvent
+        extends HookEventBase<ChatViewEventName, ChatViewEventPayload> {}
 
     export interface NavigationEntryActionHookEvent
         extends HookEventBase<"navigation_entry_action", NavigationEntryActionEventPayload> {}
@@ -655,6 +698,11 @@ export namespace ToolPkg {
         function: ChatInputHookHandler;
     }
 
+    export interface ChatViewHookRegistration {
+        id: string;
+        function: HookHandler<ChatViewHookEvent>;
+    }
+
     export interface ToolLifecycleHookRegistration {
         id: string;
         function: ToolLifecycleHookHandler;
@@ -720,6 +768,7 @@ export namespace ToolPkg {
         registerXmlRenderPlugin(definition: XmlRenderPluginRegistration): void;
         registerInputMenuTogglePlugin(definition: InputMenuTogglePluginRegistration): void;
         registerChatInputHook(definition: ChatInputHookRegistration): void;
+        registerChatViewHook(definition: ChatViewHookRegistration): void;
         registerToolLifecycleHook(definition: ToolLifecycleHookRegistration): void;
         registerPromptInputHook(definition: PromptInputHookRegistration): void;
         registerPromptHistoryHook(definition: PromptHistoryHookRegistration): void;
@@ -753,6 +802,8 @@ declare global {
     function registerToolPkgInputMenuTogglePlugin(definition: ToolPkg.InputMenuTogglePluginRegistration): void;
 
     function registerToolPkgChatInputHook(definition: ToolPkg.ChatInputHookRegistration): void;
+
+    function registerToolPkgChatViewHook(definition: ToolPkg.ChatViewHookRegistration): void;
 
     function registerToolPkgToolLifecycleHook(definition: ToolPkg.ToolLifecycleHookRegistration): void;
 

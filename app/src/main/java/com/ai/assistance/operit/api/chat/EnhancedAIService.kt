@@ -734,6 +734,8 @@ class EnhancedAIService private constructor(private val context: Context) {
         val availableTools =
             getAvailableToolsForFunction(
                 functionType = functionType,
+                chatId = chatId,
+                promptFunctionType = promptFunctionType,
                 roleCardId = roleCardId,
                 chatModelConfigIdOverride = chatModelConfigIdOverride,
                 chatModelIndexOverride = chatModelIndexOverride
@@ -947,6 +949,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                     // 获取工具列表（如果启用Tool Call）
                     val availableTools = getAvailableToolsForFunction(
                         functionType = functionType,
+                        chatId = chatId,
+                        promptFunctionType = promptFunctionType,
                         roleCardId = roleCardId,
                         chatModelConfigIdOverride = chatModelConfigIdOverride,
                         chatModelIndexOverride = chatModelIndexOverride
@@ -1178,6 +1182,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                             processStreamCompletion(
                                 execContext,
                                 functionType,
+                                promptFunctionType,
                                 collector,
                                 enableThinking,
                                 enableMemoryAutoUpdate,
@@ -1599,6 +1604,7 @@ class EnhancedAIService private constructor(private val context: Context) {
     private suspend fun processStreamCompletion(
             context: MessageExecutionContext,
             functionType: FunctionType = FunctionType.CHAT,
+            promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT,
             collector: StreamCollector<String>,
             enableThinking: Boolean = false,
             enableMemoryAutoUpdate: Boolean = true,
@@ -1692,6 +1698,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                         toolInvocations = emptyList(),
                         context = context,
                         functionType = functionType,
+                        promptFunctionType = promptFunctionType,
                         collector = collector,
                         enableThinking = enableThinking,
                         enableMemoryAutoUpdate = enableMemoryAutoUpdate,
@@ -1804,6 +1811,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                         toolInvocations = emptyList(),
                         context = context,
                         functionType = functionType,
+                        promptFunctionType = promptFunctionType,
                         collector = collector,
                         enableThinking = enableThinking,
                         enableMemoryAutoUpdate = enableMemoryAutoUpdate,
@@ -1840,6 +1848,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                         extractedToolInvocations,
                         context,
                         functionType,
+                        promptFunctionType,
                         collector,
                         enableThinking,
                         enableMemoryAutoUpdate,
@@ -1955,6 +1964,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         toolInvocations: List<ToolInvocation>,
         context: MessageExecutionContext,
         functionType: FunctionType = FunctionType.CHAT,
+        promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT,
         collector: StreamCollector<String>,
         enableThinking: Boolean = false,
         enableMemoryAutoUpdate: Boolean = true,
@@ -2011,7 +2021,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             if (allToolResults.isNotEmpty()) {
                 AppLogger.d(TAG, "所有工具结果收集完毕，准备最终处理。")
                 processToolResults(
-                    allToolResults, context, functionType, collector, enableThinking,
+                    allToolResults, context, functionType, promptFunctionType, collector, enableThinking,
                     enableMemoryAutoUpdate, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask,
                     characterName, avatarUri, roleCardId, chatId, onToolInvocation, notifyReplyOverride,
                     chatModelConfigIdOverride, chatModelIndexOverride, preferenceProfileIdOverride, stream, enableGroupOrchestrationHint,
@@ -2023,6 +2033,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     results = emptyList(),
                     context = context,
                     functionType = functionType,
+                    promptFunctionType = promptFunctionType,
                     collector = collector,
                     enableThinking = enableThinking,
                     enableMemoryAutoUpdate = enableMemoryAutoUpdate,
@@ -2070,6 +2081,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             results: List<ToolResult>,
             context: MessageExecutionContext,
             functionType: FunctionType = FunctionType.CHAT,
+            promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT,
             collector: StreamCollector<String>,
             enableThinking: Boolean = false,
             enableMemoryAutoUpdate: Boolean = true,
@@ -2182,6 +2194,8 @@ class EnhancedAIService private constructor(private val context: Context) {
         // 获取工具列表（如果启用Tool Call）- 提前获取，以便在token计算中使用
         val availableTools = getAvailableToolsForFunction(
             functionType = functionType,
+            chatId = chatId,
+            promptFunctionType = promptFunctionType,
             roleCardId = roleCardId,
             chatModelConfigIdOverride = chatModelConfigIdOverride,
             chatModelIndexOverride = chatModelIndexOverride
@@ -2351,6 +2365,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 processStreamCompletion(
                     context,
                     functionType,
+                    promptFunctionType,
                     collector,
                     enableThinking,
                     enableMemoryAutoUpdate,
@@ -2612,6 +2627,7 @@ class EnhancedAIService private constructor(private val context: Context) {
     ): List<Map<String, Any?>> {
         return toolPrompts.orEmpty().map { tool ->
             mapOf(
+                "categoryName" to "",
                 "name" to tool.name,
                 "description" to tool.description,
                 "parameters" to tool.parameters,
@@ -2629,6 +2645,63 @@ class EnhancedAIService private constructor(private val context: Context) {
                     }
             )
         }
+    }
+
+    private fun deserializePromptHookToolPrompts(
+        toolItems: List<Map<String, Any?>>
+    ): List<ToolPrompt> {
+        return toolItems.mapNotNull { item ->
+            val name = item["name"] as? String ?: return@mapNotNull null
+            val description = item["description"] as? String ?: return@mapNotNull null
+            val parametersStructured = deserializePromptHookToolParameters(item["parametersStructured"])
+            ToolPrompt(
+                name = name,
+                description = description,
+                parameters = item["parameters"] as? String ?: "",
+                parametersStructured = parametersStructured.ifEmpty { null },
+                details = item["details"] as? String ?: "",
+                notes = item["notes"] as? String ?: ""
+            )
+        }
+    }
+
+    private fun deserializePromptHookToolParameters(
+        value: Any?
+    ): List<ToolParameterSchema> {
+        val items = value as? List<*> ?: return emptyList()
+        return items.mapNotNull { item ->
+            val parameter = item as? Map<*, *> ?: return@mapNotNull null
+            val name = parameter["name"] as? String ?: return@mapNotNull null
+            val description = parameter["description"] as? String ?: return@mapNotNull null
+            ToolParameterSchema(
+                name = name,
+                type = parameter["type"] as? String ?: "string",
+                description = description,
+                required = parameter["required"] as? Boolean ?: true,
+                default = (parameter["default"] as? String) ?: parameter["default"]?.toString()
+            )
+        }
+    }
+
+    private fun applyToolPromptComposeHooksToAvailableTools(
+        availableTools: List<ToolPrompt>,
+        chatId: String?,
+        functionType: FunctionType,
+        promptFunctionType: PromptFunctionType?,
+        useEnglish: Boolean
+    ): List<ToolPrompt> {
+        val hookContext =
+            PromptHookRegistry.dispatchToolPromptComposeHooks(
+                PromptHookContext(
+                    stage = "filter_tool_call_tools",
+                    chatId = chatId,
+                    functionType = functionType.name,
+                    promptFunctionType = promptFunctionType?.name,
+                    useEnglish = useEnglish,
+                    availableTools = serializePromptHookToolPrompts(availableTools)
+                )
+            )
+        return deserializePromptHookToolPrompts(hookContext.availableTools)
     }
 
     /** Cancel the current conversation */
@@ -2687,11 +2760,17 @@ class EnhancedAIService private constructor(private val context: Context) {
      */
     private suspend fun getAvailableToolsForFunction(
         functionType: FunctionType,
+        chatId: String? = null,
+        promptFunctionType: PromptFunctionType? = null,
         roleCardId: String? = null,
         chatModelConfigIdOverride: String? = null,
         chatModelIndexOverride: Int? = null
     ): List<ToolPrompt>? {
         return try {
+            AppLogger.d(
+                TAG,
+                "准备构建Tool Call工具列表: functionType=${functionType.name}, promptFunctionType=${promptFunctionType?.name}, chatId=${chatId ?: "null"}"
+            )
             // 先读取全局工具开关
             val enableTools = apiPreferences.enableToolsFlow.first()
             val toolPromptVisibility = runCatching {
@@ -2721,18 +2800,9 @@ class EnhancedAIService private constructor(private val context: Context) {
             }
 
             val toolExposureMode = ToolExposureMode.resolve(config.apiProviderType)
-            
+
             // 获取所有工具分类
             val isEnglish = LocaleUtils.getCurrentLanguage(context) == "en"
-
-            if (toolExposureMode == ToolExposureMode.CLI) {
-                val cliTools = CliToolModeSupport.buildCliPublicToolPrompts(isEnglish)
-                AppLogger.d(
-                    TAG,
-                    "CLI Tool Mode已启用，提供 ${cliTools.size} 个工具 (provider=${config.apiProviderType})"
-                )
-                return cliTools
-            }
 
             // 后端识图服务是否可用（IMAGE_RECOGNITION 功能），用于 intent-based 视觉模型
             val hasBackendImageRecognition = multiServiceManager.hasImageRecognitionConfigured()
@@ -2750,35 +2820,44 @@ class EnhancedAIService private constructor(private val context: Context) {
             val chatModelHasDirectAudio = config.enableDirectAudioProcessing
             val chatModelHasDirectVideo = config.enableDirectVideoProcessing
 
-            val categories = if (isEnglish) {
-                SystemToolPrompts.getAIAllCategoriesEn(
-                    hasBackendImageRecognition = hasBackendImageRecognition,
-                    chatModelHasDirectImage = chatModelHasDirectImage,
-                    hasBackendAudioRecognition = hasBackendAudioRecognition,
-                    hasBackendVideoRecognition = hasBackendVideoRecognition,
-                    chatModelHasDirectAudio = chatModelHasDirectAudio,
-                    chatModelHasDirectVideo = chatModelHasDirectVideo,
-                    safBookmarkNames = safBookmarkNames
-                )
+            val selectedTools = if (toolExposureMode == ToolExposureMode.CLI) {
+                CliToolModeSupport.buildCliPublicToolPrompts(isEnglish).toMutableList()
             } else {
-                SystemToolPrompts.getAIAllCategoriesCn(
-                    hasBackendImageRecognition = hasBackendImageRecognition,
-                    chatModelHasDirectImage = chatModelHasDirectImage,
-                    hasBackendAudioRecognition = hasBackendAudioRecognition,
-                    hasBackendVideoRecognition = hasBackendVideoRecognition,
-                    chatModelHasDirectAudio = chatModelHasDirectAudio,
-                    chatModelHasDirectVideo = chatModelHasDirectVideo,
-                    safBookmarkNames = safBookmarkNames
+                val categories = if (isEnglish) {
+                    SystemToolPrompts.getAIAllCategoriesEn(
+                        hasBackendImageRecognition = hasBackendImageRecognition,
+                        chatModelHasDirectImage = chatModelHasDirectImage,
+                        hasBackendAudioRecognition = hasBackendAudioRecognition,
+                        hasBackendVideoRecognition = hasBackendVideoRecognition,
+                        chatModelHasDirectAudio = chatModelHasDirectAudio,
+                        chatModelHasDirectVideo = chatModelHasDirectVideo,
+                        safBookmarkNames = safBookmarkNames
+                    )
+                } else {
+                    SystemToolPrompts.getAIAllCategoriesCn(
+                        hasBackendImageRecognition = hasBackendImageRecognition,
+                        chatModelHasDirectImage = chatModelHasDirectImage,
+                        hasBackendAudioRecognition = hasBackendAudioRecognition,
+                        hasBackendVideoRecognition = hasBackendVideoRecognition,
+                        chatModelHasDirectAudio = chatModelHasDirectAudio,
+                        chatModelHasDirectVideo = chatModelHasDirectVideo,
+                        safBookmarkNames = safBookmarkNames
+                    )
+                }
+
+                categories.flatMap { it.tools }.toMutableList().apply {
+                    retainAll { tool ->
+                        roleCardToolAccess.isBuiltinToolAllowed(tool.name)
+                    }
+                }
+            }
+
+            if (toolExposureMode == ToolExposureMode.CLI) {
+                AppLogger.d(
+                    TAG,
+                    "CLI Tool Mode已启用，提供 ${selectedTools.size} 个工具 (provider=${config.apiProviderType})"
                 )
-            }
-
-            val selectedTools = categories.flatMap { it.tools }.toMutableList()
-
-            selectedTools.retainAll { tool ->
-                roleCardToolAccess.isBuiltinToolAllowed(tool.name)
-            }
-
-            if (config.enableToolCall) {
+            } else if (config.enableToolCall) {
                 selectedTools.add(
                     ToolPrompt(
                         name = "package_proxy",
@@ -2801,16 +2880,24 @@ class EnhancedAIService private constructor(private val context: Context) {
                 )
             }
 
-            if (selectedTools.isEmpty()) {
+            val hookedTools = applyToolPromptComposeHooksToAvailableTools(
+                availableTools = selectedTools,
+                chatId = chatId,
+                functionType = functionType,
+                promptFunctionType = promptFunctionType,
+                useEnglish = isEnglish
+            )
+
+            if (hookedTools.isEmpty()) {
                 AppLogger.d(TAG, "根据当前工具开关，未选择任何Tool Call工具")
                 return null
             }
 
             AppLogger.d(
                 TAG,
-                "Tool Call已启用，提供 ${selectedTools.size} 个工具 (enableTools=$enableTools, visibleToolOverrides=${toolPromptVisibility.size}, roleCardCustomTools=${roleCardToolAccess.customEnabled})"
+                "Tool Call已启用，提供 ${hookedTools.size} 个工具 (base=${selectedTools.size}, enableTools=$enableTools, visibleToolOverrides=${toolPromptVisibility.size}, roleCardCustomTools=${roleCardToolAccess.customEnabled})"
             )
-            selectedTools
+            hookedTools
         } catch (e: Exception) {
             AppLogger.e(TAG, "获取工具列表失败", e)
             null

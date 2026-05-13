@@ -2,6 +2,7 @@ package com.ai.assistance.operit.ui.common.markdown
 
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,6 +24,7 @@ import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslParser
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslRenderResult
+import com.ai.assistance.operit.ui.common.composedsl.LocalComposeDslXmlStream
 import com.ai.assistance.operit.ui.common.composedsl.RenderToolPkgComposeDslNode
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.stream.Stream
@@ -381,11 +383,13 @@ object XmlRenderPluginRegistry {
         Box(modifier = modifier) {
             when {
                 renderResult?.tree != null -> {
-                    RenderToolPkgComposeDslNode(
-                        node = renderResult!!.tree,
-                        modifier = Modifier.align(Alignment.TopStart),
-                        onAction = ::dispatchAction
-                    )
+                    CompositionLocalProvider(LocalComposeDslXmlStream provides xmlStream) {
+                        RenderToolPkgComposeDslNode(
+                            node = renderResult!!.tree,
+                            modifier = Modifier.align(Alignment.TopStart),
+                            onAction = ::dispatchAction
+                        )
+                    }
                 }
                 errorMessage != null -> {
                     Text(

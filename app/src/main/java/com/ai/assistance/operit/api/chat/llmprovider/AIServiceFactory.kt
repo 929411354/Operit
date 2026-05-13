@@ -464,6 +464,19 @@ object AIServiceFactory {
                     supportsVideo = supportsVideo,
                     enableToolCall = enableToolCall
                 )
+            ApiProviderType.MIMO ->
+                MimoProvider(
+                    apiEndpoint = config.apiEndpoint,
+                    apiKeyProvider = apiKeyProvider,
+                    modelName = config.modelName,
+                    client = httpClient,
+                    customHeaders = customHeaders,
+                    providerType = providerType,
+                    supportsVision = supportsVision,
+                    supportsAudio = supportsAudio,
+                    supportsVideo = supportsVideo,
+                    enableToolCall = enableToolCall
+                )
             ApiProviderType.DEEPSEEK ->
                 DeepseekProvider(
                     apiEndpoint = config.apiEndpoint,

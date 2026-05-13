@@ -106,7 +106,8 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         private const val SPEECH_PREVIEW_MAX = 48
     }
 
-    private data class ActiveAtMention(
+    private data class ActiveMentionTrigger(
+        val triggerChar: Char,
         val triggerIndex: Int,
         val query: String,
     )
@@ -461,6 +462,9 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     // 当前 @ mention 的搜索词
     private val _mentionSearchQuery = MutableStateFlow("")
     val mentionSearchQuery: StateFlow<String> = _mentionSearchQuery.asStateFlow()
+
+    private val _mentionSuggestionTriggerChar = MutableStateFlow<Char?>(null)
+    val mentionSuggestionTriggerChar: StateFlow<Char?> = _mentionSuggestionTriggerChar.asStateFlow()
 
     private val _workspaceCommandExecutionState =
         MutableStateFlow<WorkspaceCommandExecutionState?>(null)
@@ -1366,6 +1370,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 !containsMentionToken(normalizedValue.text, removedMentionToken)
         ) {
             attachmentDelegate.removePackageAttachment(removedMentionToken)
+            attachmentDelegate.removeWorkspaceMentionAttachment(removedMentionToken)
         }
 
         messageProcessingDelegate.updateUserMessage(normalizedValue)
@@ -1404,14 +1409,14 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         if (trimmedToken.isEmpty()) return
 
         val current = userMessage.value
-        val activeMention = findActiveAtMention(current) ?: return
+        val activeMention = findActiveMentionTrigger(current) ?: return
         val text = current.text
         val cursor = current.selection.start.coerceIn(0, text.length)
         val before = text.substring(0, activeMention.triggerIndex)
         val after = text.substring(cursor)
         val insertion =
             buildString {
-                append("@")
+                append(activeMention.triggerChar)
                 append(trimmedToken)
                 if (after.isEmpty() || !after.first().isWhitespace()) {
                     append(' ')
@@ -1429,6 +1434,26 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
         replaceCurrentMentionToken(trimmedPackageName)
         attachMentionPackage(trimmedPackageName)
+        hideMentionSuggestionPanel()
+    }
+
+    fun selectMentionWorkspaceEntry(relativePath: String) {
+        val normalizedRelativePath = relativePath.trim().replace('\\', '/')
+        if (normalizedRelativePath.isEmpty()) return
+
+        replaceCurrentMentionToken(normalizedRelativePath)
+
+        val activeChat =
+            chatHistories.value.firstOrNull { it.id == currentChatId.value }
+        val workspacePath = activeChat?.workspace
+        if (!workspacePath.isNullOrBlank()) {
+            attachMentionWorkspaceEntry(
+                workspacePath = workspacePath,
+                relativePath = normalizedRelativePath,
+                workspaceEnv = activeChat.workspaceEnv,
+            )
+        }
+
         hideMentionSuggestionPanel()
     }
 
@@ -1486,6 +1511,28 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             } catch (e: Exception) {
                 AppLogger.e(TAG, "添加 mention 包附件失败", e)
                 uiStateDelegate.showToast(context.getString(R.string.attachment_package_failed, packageName))
+            }
+        }
+    }
+
+    private fun attachMentionWorkspaceEntry(
+        workspacePath: String,
+        relativePath: String,
+        workspaceEnv: String?,
+    ) {
+        viewModelScope.launch {
+            try {
+                attachmentDelegate.attachWorkspaceMention(
+                    workspacePath = workspacePath,
+                    relativePath = relativePath,
+                    workspaceEnv = workspaceEnv,
+                )
+                if (!containsMentionToken(userMessage.value.text, relativePath)) {
+                    attachmentDelegate.removeWorkspaceMentionAttachment(relativePath)
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "添加 mention 工作区附件失败", e)
+                uiStateDelegate.showToast(context.getString(R.string.attachment_cannot_attach, relativePath))
             }
         }
     }
@@ -1789,40 +1836,57 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     }
 
     private fun updateMentionSuggestionState(value: TextFieldValue) {
-        val activeMention = findActiveAtMention(value)
+        val activeMention = findActiveMentionTrigger(value)
         if (activeMention == null) {
             clearMentionSuggestionState()
             return
         }
 
         _showMentionSuggestionPanel.value = true
+        _mentionSuggestionTriggerChar.value = activeMention.triggerChar
         _mentionSearchQuery.value = activeMention.query
     }
 
     private fun clearMentionSuggestionState() {
         _showMentionSuggestionPanel.value = false
+        _mentionSuggestionTriggerChar.value = null
         _mentionSearchQuery.value = ""
     }
 
-    private fun findActiveAtMention(value: TextFieldValue): ActiveAtMention? {
+    private fun findActiveMentionTrigger(value: TextFieldValue): ActiveMentionTrigger? {
         val text = value.text
         val cursor = value.selection.start.coerceIn(0, text.length)
-        val textBeforeCursor = text.substring(0, cursor)
-        val triggerIndex = textBeforeCursor.lastIndexOf('@')
-        if (triggerIndex == -1) return null
-        if (triggerIndex > 0 && isMentionContinuation(textBeforeCursor[triggerIndex - 1])) {
-            return null
-        }
+        var index = cursor - 1
+        while (index >= 0) {
+            val currentChar = text[index]
+            if (currentChar.isWhitespace()) {
+                return null
+            }
+            if (currentChar != '@' && currentChar != '/') {
+                index -= 1
+                continue
+            }
+            if (currentChar == '@' && index > 0 && isMentionContinuation(text[index - 1], '@')) {
+                index -= 1
+                continue
+            }
+            if (currentChar == '/' && index > 0 && !text[index - 1].isWhitespace()) {
+                index -= 1
+                continue
+            }
 
-        val query = textBeforeCursor.substring(triggerIndex + 1)
-        if (query.any(Char::isWhitespace)) {
-            return null
-        }
+            val query = text.substring(index + 1, cursor)
+            if (query.any(Char::isWhitespace)) {
+                return null
+            }
 
-        return ActiveAtMention(
-            triggerIndex = triggerIndex,
-            query = query.trim(),
-        )
+            return ActiveMentionTrigger(
+                triggerChar = currentChar,
+                triggerIndex = index,
+                query = query.trim(),
+            )
+        }
+        return null
     }
 
     private suspend fun awaitCurrentChat(chatId: String, maxWaitCount: Int = 40): Boolean {
@@ -2986,6 +3050,10 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     fun manuallyUpdateMemory() {
         messageCoordinationDelegate.manuallyUpdateMemory()
+    }
+
+    fun manuallyUpdateMemoryWithSelectedMessages(messages: List<ChatMessage>) {
+        messageCoordinationDelegate.manuallyUpdateMemoryWithSelectedMessages(messages)
     }
 
     fun manuallySummarizeConversation() {

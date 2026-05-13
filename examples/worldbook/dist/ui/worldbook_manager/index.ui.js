@@ -733,7 +733,7 @@ function Screen(ctx) {
                         ]),
                         UI.IconButton({
                             onClick: () => setShowSnippetPicker(false),
-                            icon: "close"
+                            icon: Icons.Close
                         }, [])
                     ]),
                     UI.LazyColumn({

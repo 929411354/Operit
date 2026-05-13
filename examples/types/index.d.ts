@@ -78,6 +78,7 @@ import {
 import { Intent as AndroidIntent, IntentFlag as AndroidIntentFlag, IntentAction as AndroidIntentAction, IntentCategory as AndroidIntentCategory } from './android';
 import { UINode as UINodeClass, UI as UINamespace } from './ui';
 import { Android as AndroidClass } from './android';
+import type { MaterialIconsRegistry as MaterialIconsRegistryType } from './material-icons';
 import {
     ComposeDslContext as ComposeDslContextType,
     ComposeDslScreen as ComposeDslScreenType,
@@ -96,6 +97,7 @@ export * from './results';
 export * from './tool-types';
 export * from './java-bridge';
 export * from './toolpkg';
+export * from './material-icons';
 
 // Export compose-dsl definitions for toolpkg runtime modules
 export * from './compose-dsl';
@@ -147,10 +149,13 @@ declare global {
     const IntentCategory: typeof AndroidIntentCategory;
     const UINode: typeof UINodeClass;
     const Android: typeof AndroidClass;
+    const Icons: MaterialIconsRegistryType;
 
     // Make classes available as types too
     type UINode = UINodeClass;
     type Android = AndroidClass;
+    type MaterialIconName = MaterialIconNameType;
+    type MaterialIconsRegistry = MaterialIconsRegistryType;
     type ComposeDslContext = ComposeDslContextType;
     type ComposeDslScreen = ComposeDslScreenType;
     type ComposeNode = ComposeNodeType;

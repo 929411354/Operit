@@ -255,12 +255,12 @@ private fun HistoryQuickScroller(
     val visibleFraction =
         (viewportHeightPx / estimatedContentHeightPx).coerceIn(0.12f, 1f)
     val thumbHeightPx =
-        if (trackHeightPx <= 0f) {
-            minThumbHeight
-        } else {
-            (trackHeightPx * visibleFraction).coerceIn(minThumbHeight, trackHeightPx)
+        when {
+            trackHeightPx <= 0f -> minThumbHeight
+            trackHeightPx <= minThumbHeight -> trackHeightPx
+            else -> (trackHeightPx * visibleFraction).coerceIn(minThumbHeight, trackHeightPx)
         }
-    val maxThumbOffsetPx = (trackHeightPx - thumbHeightPx).coerceAtLeast(1f)
+    val maxThumbOffsetPx = (trackHeightPx - thumbHeightPx).coerceAtLeast(0f)
     val thumbOffsetPx = maxThumbOffsetPx * scrollProgress
     val thumbHeightDp = with(density) { thumbHeightPx.toDp() }
     val thumbOffsetDp = with(density) { thumbOffsetPx.toDp() }

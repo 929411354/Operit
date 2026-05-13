@@ -30,7 +30,8 @@ class MemoryAutoSaveScheduler(
         private const val LOOP_TICK_MS = 60 * 1000L
         const val DEFAULT_POLL_INTERVAL_MS =
             MemorySearchSettingsPreferences.DEFAULT_AUTO_SAVE_INTERVAL_MINUTES * 60 * 1000L
-        private const val MAX_MESSAGES_PER_CHAT = 48
+        private const val MAX_MESSAGES_PER_BATCH = 48
+        private const val MAX_CANDIDATES_PER_RUN_PER_CHAT = 20
         private const val MIN_TOTAL_CANDIDATES_TO_EXTRACT = 5
 
         @Volatile
@@ -122,10 +123,16 @@ class MemoryAutoSaveScheduler(
             )
 
             for ((chatId, candidates) in groupedCandidates) {
+                val orderedCandidates =
+                    candidates.sortedWith(
+                        compareBy<MemoryAutoSaveCandidate> { it.triggerMessageTimestamp }
+                            .thenBy { it.createdAt.time }
+                    )
+                val batchCandidates = orderedCandidates.take(MAX_CANDIDATES_PER_RUN_PER_CHAT)
                 processChatCandidateGroup(
                     profileId = profileId,
                     chatId = chatId,
-                    candidates = candidates,
+                    candidates = batchCandidates,
                     repository = repository,
                     messageDao = messageDao,
                     toolHandler = toolHandler,
@@ -180,7 +187,7 @@ class MemoryAutoSaveScheduler(
                     messageDao.getMessagesForChatBeforeTimestampDesc(
                         chatId = chatId,
                         maxTimestamp = latestTriggerTimestamp,
-                        limit = MAX_MESSAGES_PER_CHAT
+                        limit = MAX_MESSAGES_PER_BATCH
                     )
                 }.asReversed()
 

@@ -758,6 +758,7 @@
     <string name="clear_selection">Cancel</string>
     <string name="delete_selected">Delete Selected</string>
     <string name="share_selected">Share</string>
+    <string name="add_selected_to_memory">Add to summary memory</string>
     <string name="selected_count">%d selected</string>
     <string name="generating_image">Generating image...</string>
     <string name="share_failed">Share failed</string>
@@ -3806,6 +3807,7 @@
     <string name="provider_zhipu">Zhipu AI (ChatGLM Series)</string>
     <string name="provider_baichuan">Baichuan Models</string>
     <string name="provider_moonshot">Moonshot AI</string>
+    <string name="provider_mimo">Xiaomi MiMo</string>
     <string name="provider_deepseek">Deepseek Models</string>
     <string name="provider_mistral">Mistral AI (Codestral)</string>
     <string name="provider_siliconflow">SiliconFlow</string>
@@ -5041,7 +5043,7 @@
     
     <string name="backup_raw_snapshot_title">File Snapshot Backup (Experimental)</string>
     <string name="backup_raw_snapshot_subtitle">Archive/restore app data by file &amp; directory</string>
-    <string name="backup_raw_snapshot_desc">This will archive app-internal data directories: files/shared_prefs/datastore/databases (the terminal Linux environment can be very large, so it is excluded by default). Restoring overwrites current data and requires an app restart. Some encrypted data may not work after device migration or reinstall.</string>
+    <string name="backup_raw_snapshot_desc">This archives app data that is removed by Clear data: internal files/shared_prefs/datastore/databases and Android/data/package/files (the terminal Linux environment can be very large, so it is excluded by default). Restoring overwrites current data and requires an app restart. Some encrypted data may not work after device migration or reinstall.</string>
     <string name="backup_raw_snapshot_backup_now">Backup now</string>
     <string name="backup_raw_snapshot_restore_from_file">Restore from file</string>
     <string name="backup_raw_snapshot_backing_up">Creating file snapshot backup...</string>
@@ -5050,6 +5052,7 @@
     <string name="backup_raw_snapshot_progress_scanning_files">Scanning files…</string>
     <string name="backup_raw_snapshot_progress_scanning_files_with_count">Scanning files: %1$d</string>
     <string name="backup_raw_snapshot_progress_zipping_files">Packaging files...</string>
+    <string name="backup_raw_snapshot_progress_zipping_external_files">Packaging Android/data/package/files...</string>
     <string name="backup_raw_snapshot_progress_zipping_shared_prefs">Packaging shared_prefs...</string>
     <string name="backup_raw_snapshot_progress_zipping_datastore">Packaging datastore...</string>
     <string name="backup_raw_snapshot_progress_zipping_databases">Packaging databases...</string>
@@ -5057,6 +5060,7 @@
     <string name="backup_raw_snapshot_progress_reading_zip">Reading backup file...</string>
     <string name="backup_raw_snapshot_progress_extracting">Extracting...</string>
     <string name="backup_raw_snapshot_progress_replacing_files">Writing files...</string>
+    <string name="backup_raw_snapshot_progress_replacing_external_files">Writing Android/data/package/files...</string>
     <string name="backup_raw_snapshot_progress_replacing_shared_prefs">Writing shared_prefs...</string>
     <string name="backup_raw_snapshot_progress_replacing_datastore">Writing datastore...</string>
     <string name="backup_raw_snapshot_progress_replacing_databases">Writing databases...</string>
@@ -5608,6 +5612,8 @@
     <string name="memory_search_weight_section">Weights</string>
     <string name="memory_auto_save_settings_title">Auto Save Memory</string>
     <string name="memory_auto_save_interval_minutes">Autosave interval (minutes)</string>
+    <string name="memory_auto_save_interval_value">%1$d min · range %2$d-%3$d</string>
+    <string name="memory_auto_save_interval_hint">Adjustable range %1$d-%2$d minutes, default %3$d minutes</string>
     <string name="memory_search_mode_balanced">Balanced</string>
     <string name="memory_search_mode_keyword_first">Keyword First</string>
     <string name="memory_search_mode_semantic_first">Semantic First</string>
@@ -6676,6 +6682,7 @@
     <string name="chat_cannot_create_new">Cannot create new conversation, please try again</string>
     <string name="chat_ai_service_unavailable_memory">AI service unavailable, cannot update memory</string>
     <string name="chat_history_empty_no_update">Chat history is empty, no need to update memory</string>
+    <string name="chat_selected_messages_no_user_for_memory">The selected messages do not contain any user messages that can be saved to memory</string>
     <string name="chat_memory_manually_updated">Memory has been manually updated</string>
     <string name="chat_manual_update_memory_failed">Manual memory update failed: %1$s</string>
     <string name="chat_auto_update_memory_failed">Automatic memory update failed: %1$s</string>

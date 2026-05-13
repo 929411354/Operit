@@ -7,6 +7,8 @@ import android.content.ServiceConnection
 import android.os.Build
 import android.os.IBinder
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.api.chat.ChatRuntimeHolder
+import com.ai.assistance.operit.api.chat.ChatRuntimeSlot
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.WaifuMessageProcessor
@@ -73,7 +75,7 @@ sealed class MessageSendStreamStartResult {
 
 /**
  * 对话管理工具
- * 通过绑定 FloatingChatService 来管理对话，实现创建、切换、列出对话和发送消息等功能
+ * 负责管理对话、浮窗服务，以及按指定 runtime 发送消息
  */
 class StandardChatManagerTool(private val context: Context) {
 
@@ -124,6 +126,15 @@ class StandardChatManagerTool(private val context: Context) {
         return when (value?.lowercase()) {
             "true" -> true
             "false" -> false
+            else -> null
+        }
+    }
+
+    private fun parseMessageRuntimeSlot(value: String?): ChatRuntimeSlot? {
+        return when (value?.trim()?.lowercase()) {
+            null, "" -> ChatRuntimeSlot.FLOATING
+            "main" -> ChatRuntimeSlot.MAIN
+            "floating" -> ChatRuntimeSlot.FLOATING
             else -> null
         }
     }
@@ -557,6 +568,7 @@ class StandardChatManagerTool(private val context: Context) {
     }
 
     private val appContext = context.applicationContext
+    private val chatRuntimeHolder by lazy { ChatRuntimeHolder.getInstance(appContext) }
 
     // Service 连接状态
     private var chatCore: ChatServiceCore? = null
@@ -1184,27 +1196,20 @@ class StandardChatManagerTool(private val context: Context) {
      */
     suspend fun startMessageToAIStream(tool: AITool): MessageSendStreamStartResult {
         return try {
-            if (!ensureServiceConnected()) {
+            val runtimeParam = tool.parameters.find { it.name == "runtime" }?.value?.trim()
+            val runtimeSlot = parseMessageRuntimeSlot(runtimeParam)
+            if (runtimeParam != null && runtimeSlot == null) {
                 return MessageSendStreamStartResult.Failed(
                     ToolResult(
                         toolName = tool.name,
                         success = false,
                         result = MessageSendResultData(chatId = "", message = ""),
-                        error = "Service not connected"
+                        error = "Invalid parameter: runtime must be main/floating"
                     )
                 )
             }
 
-            val core =
-                chatCore
-                    ?: return MessageSendStreamStartResult.Failed(
-                        ToolResult(
-                            toolName = tool.name,
-                            success = false,
-                            result = MessageSendResultData(chatId = "", message = ""),
-                            error = "ChatServiceCore not initialized"
-                        )
-                    )
+            val core = chatRuntimeHolder.getCore(runtimeSlot ?: ChatRuntimeSlot.FLOATING)
 
             val message = tool.parameters.find { it.name == "message" }?.value
             if (message.isNullOrBlank()) {

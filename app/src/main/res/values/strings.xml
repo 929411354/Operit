@@ -1607,6 +1607,7 @@
     <string name="clear_selection">取消</string>
     <string name="delete_selected">删除选中</string>
     <string name="share_selected">分享</string>
+    <string name="add_selected_to_memory">纳入总结记忆</string>
     <string name="selected_count">已选择 %d 条</string>
     <string name="generating_image">正在生成图片...</string>
     <string name="share_failed">分享失败</string>
@@ -3745,6 +3746,7 @@
     <string name="provider_zhipu">智谱AI (ChatGLM系列)</string>
     <string name="provider_baichuan">百川大模型</string>
     <string name="provider_moonshot">月之暗面大模型</string>
+    <string name="provider_mimo">Xiaomi MiMo</string>
     <string name="provider_deepseek">Deepseek大模型</string>
     <string name="provider_mistral">Mistral AI (Codestral)</string>
     <string name="provider_siliconflow">硅基流动</string>
@@ -5260,7 +5262,7 @@
 
     <string name="backup_raw_snapshot_title">文件快照备份（实验）</string>
     <string name="backup_raw_snapshot_subtitle">以文件/目录为单位的整体压缩备份与恢复</string>
-    <string name="backup_raw_snapshot_desc">将打包应用内部数据目录中的 files/shared_prefs/datastore/databases（终端 Linux 环境体积很大，默认不备份）。恢复会覆盖当前数据，并且需要重启应用生效。部分加密数据在换机/重装后可能无法使用。</string>
+    <string name="backup_raw_snapshot_desc">将打包会随“清除数据”一起删除的应用数据：内部 files/shared_prefs/datastore/databases，以及 Android/data/包名/files（终端 Linux 环境体积很大，默认不备份）。恢复会覆盖当前数据，并且需要重启应用生效。部分加密数据在换机/重装后可能无法使用。</string>
     <string name="backup_raw_snapshot_backup_now">立即备份</string>
     <string name="backup_raw_snapshot_restore_from_file">从文件恢复</string>
     <string name="backup_raw_snapshot_backing_up">正在生成文件快照备份...</string>
@@ -5269,6 +5271,7 @@
     <string name="backup_raw_snapshot_progress_scanning_files">正在统计文件...</string>
     <string name="backup_raw_snapshot_progress_scanning_files_with_count">正在统计文件：%1$d</string>
     <string name="backup_raw_snapshot_progress_zipping_files">正在打包 files...</string>
+    <string name="backup_raw_snapshot_progress_zipping_external_files">正在打包 Android/data/包名/files...</string>
     <string name="backup_raw_snapshot_progress_zipping_shared_prefs">正在打包 shared_prefs...</string>
     <string name="backup_raw_snapshot_progress_zipping_datastore">正在打包 datastore...</string>
     <string name="backup_raw_snapshot_progress_zipping_databases">正在打包 databases...</string>
@@ -5276,6 +5279,7 @@
     <string name="backup_raw_snapshot_progress_reading_zip">正在读取备份文件...</string>
     <string name="backup_raw_snapshot_progress_extracting">正在解压...</string>
     <string name="backup_raw_snapshot_progress_replacing_files">正在写入 files...</string>
+    <string name="backup_raw_snapshot_progress_replacing_external_files">正在写入 Android/data/包名/files...</string>
     <string name="backup_raw_snapshot_progress_replacing_shared_prefs">正在写入 shared_prefs...</string>
     <string name="backup_raw_snapshot_progress_replacing_datastore">正在写入 datastore...</string>
     <string name="backup_raw_snapshot_progress_replacing_databases">正在写入 databases...</string>
@@ -5701,6 +5705,8 @@
     <string name="memory_search_weight_section">权重</string>
     <string name="memory_auto_save_settings_title">自动保存记忆</string>
     <string name="memory_auto_save_interval_minutes">自动保存间隔（分钟）</string>
+    <string name="memory_auto_save_interval_value">%1$d 分钟 · 范围 %2$d-%3$d</string>
+    <string name="memory_auto_save_interval_hint">可调范围 %1$d-%2$d 分钟，默认 %3$d 分钟</string>
     <string name="memory_search_mode_balanced">平衡模式</string>
     <string name="memory_search_mode_keyword_first">关键词优先</string>
     <string name="memory_search_mode_semantic_first">向量优先</string>
@@ -6931,6 +6937,7 @@
     <string name="chat_cannot_create_new">无法创建新对话，请重试</string>
     <string name="chat_ai_service_unavailable_memory">AI服务不可用，无法更新记忆</string>
     <string name="chat_history_empty_no_update">聊天历史为空，无需更新记忆</string>
+    <string name="chat_selected_messages_no_user_for_memory">选中的消息里没有可纳入记忆的用户消息</string>
     <string name="chat_memory_manually_updated">记忆已手动更新</string>
     <string name="chat_manual_update_memory_failed">手动更新记忆失败: %1$s</string>
     <string name="chat_auto_update_memory_failed">自动更新记忆失败: %1$s</string>

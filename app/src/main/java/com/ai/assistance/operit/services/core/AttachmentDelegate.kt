@@ -9,6 +9,9 @@ import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.OperitPaths
 import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.DirectoryListingData
+import com.ai.assistance.operit.core.tools.FileContentData
+import com.ai.assistance.operit.core.tools.FileExistsData
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ToolParameter
@@ -35,6 +38,7 @@ class AttachmentDelegate(private val context: Context, private val toolHandler: 
         private const val TAG = "AttachmentDelegate"
         private const val OCR_INLINE_INSTRUCTION = "Do not read the file, answer the user\'s question directly based on the attachment content and the user\'s question."
         private const val PACKAGE_ATTACHMENT_PREFIX = "package_attach:"
+        private const val WORKSPACE_MENTION_ATTACHMENT_PREFIX = "workspace_mention:"
     }
 
     // State for attachments
@@ -300,12 +304,184 @@ class AttachmentDelegate(private val context: Context, private val toolHandler: 
         removeAttachment(packageAttachmentPath(normalizedPackageName))
     }
 
+    suspend fun attachWorkspaceMention(
+        workspacePath: String,
+        relativePath: String,
+        workspaceEnv: String? = null,
+    ) = withContext(Dispatchers.IO) {
+        val normalizedRelativePath = normalizeWorkspaceRelativePath(relativePath)
+        if (workspacePath.isBlank() || normalizedRelativePath.isBlank()) {
+            return@withContext
+        }
+
+        val fullPath = buildWorkspaceChildPath(workspacePath, normalizedRelativePath)
+        val existsData = readWorkspaceEntryMetadata(fullPath, workspaceEnv)
+        if (existsData == null || !existsData.exists) {
+            _toastEvent.emit(context.getString(R.string.attachment_file_not_exist))
+            return@withContext
+        }
+
+        val content =
+            if (existsData.isDirectory) {
+                buildWorkspaceDirectoryMentionContent(
+                    fullPath = fullPath,
+                    relativePath = normalizedRelativePath,
+                    workspaceEnv = workspaceEnv,
+                )
+            } else {
+                buildWorkspaceFileMentionContent(
+                    fullPath = fullPath,
+                    relativePath = normalizedRelativePath,
+                    workspaceEnv = workspaceEnv,
+                )
+            }
+
+        val attachmentInfo =
+            AttachmentInfo(
+                filePath = workspaceMentionAttachmentPath(normalizedRelativePath),
+                fileName = normalizedRelativePath,
+                mimeType =
+                    if (existsData.isDirectory) {
+                        "application/vnd.workspace-directory+plain"
+                    } else {
+                        "text/plain"
+                    },
+                fileSize = content.length.toLong(),
+                content = content,
+            )
+
+        _attachments.value =
+            _attachments.value.filterNot { it.filePath == attachmentInfo.filePath } + attachmentInfo
+    }
+
+    fun removeWorkspaceMentionAttachment(relativePath: String) {
+        val normalizedRelativePath = normalizeWorkspaceRelativePath(relativePath)
+        if (normalizedRelativePath.isEmpty()) return
+        removeAttachment(workspaceMentionAttachmentPath(normalizedRelativePath))
+    }
+
     private fun packageAttachmentPath(packageName: String): String {
         return "$PACKAGE_ATTACHMENT_PREFIX$packageName"
     }
 
     private fun packageAttachmentDisplayName(packageName: String): String {
         return "包: $packageName"
+    }
+
+    private fun workspaceMentionAttachmentPath(relativePath: String): String {
+        return "$WORKSPACE_MENTION_ATTACHMENT_PREFIX$relativePath"
+    }
+
+    private fun normalizeWorkspaceRelativePath(relativePath: String): String {
+        return relativePath.trim().replace('\\', '/').trim('/')
+    }
+
+    private fun buildWorkspaceChildPath(workspacePath: String, relativePath: String): String {
+        val normalizedRoot = workspacePath.trimEnd('/', '\\')
+        val normalizedChild = relativePath.trimStart('/', '\\')
+        return if (normalizedRoot.isEmpty()) {
+            normalizedChild
+        } else {
+            "$normalizedRoot/$normalizedChild"
+        }
+    }
+
+    private suspend fun readWorkspaceEntryMetadata(
+        fullPath: String,
+        workspaceEnv: String?,
+    ): FileExistsData? {
+        return if (workspaceEnv.isNullOrBlank()) {
+            val file = File(fullPath)
+            FileExistsData(
+                path = fullPath,
+                exists = file.exists(),
+                isDirectory = file.isDirectory,
+                size = if (file.exists() && !file.isDirectory) file.length() else 0L,
+            )
+        } else {
+            val result =
+                toolHandler.executeTool(
+                    AITool(
+                        name = "file_exists",
+                        parameters = listOf(
+                            ToolParameter("path", fullPath),
+                            ToolParameter("environment", workspaceEnv),
+                        ),
+                    ),
+                )
+            result.result as? FileExistsData
+        }
+    }
+
+    private suspend fun buildWorkspaceFileMentionContent(
+        fullPath: String,
+        relativePath: String,
+        workspaceEnv: String?,
+    ): String {
+        val parameters =
+            buildList {
+                add(ToolParameter("path", fullPath))
+                add(ToolParameter("text_only", "true"))
+                if (!workspaceEnv.isNullOrBlank()) {
+                    add(ToolParameter("environment", workspaceEnv))
+                }
+            }
+        val result =
+            toolHandler.executeTool(
+                AITool(
+                    name = "read_file_full",
+                    parameters = parameters,
+                ),
+            )
+        val content = (result.result as? FileContentData)?.content.orEmpty()
+        return buildString {
+            appendLine("Selected workspace file: $relativePath")
+            appendLine("This file was referenced via @ mention.")
+            appendLine()
+            appendLine("File content:")
+            append(content)
+        }
+    }
+
+    private suspend fun buildWorkspaceDirectoryMentionContent(
+        fullPath: String,
+        relativePath: String,
+        workspaceEnv: String?,
+    ): String {
+        val parameters =
+            buildList {
+                add(ToolParameter("path", fullPath))
+                if (!workspaceEnv.isNullOrBlank()) {
+                    add(ToolParameter("environment", workspaceEnv))
+                }
+            }
+        val result =
+            toolHandler.executeTool(
+                AITool(
+                    name = "list_files",
+                    parameters = parameters,
+                ),
+            )
+        val listing = result.result as? DirectoryListingData
+        return buildString {
+            appendLine("Selected workspace directory: $relativePath")
+            appendLine("This directory was referenced via @ mention.")
+            appendLine()
+            appendLine("Directory entries:")
+            if (listing == null || listing.entries.isEmpty()) {
+                appendLine("(empty)")
+            } else {
+                listing.entries
+                    .sortedWith(
+                        compareBy<DirectoryListingData.FileEntry> { !it.isDirectory }
+                            .thenBy { it.name.lowercase() },
+                    )
+                    .forEach { entry ->
+                        val kind = if (entry.isDirectory) "[DIR]" else "[FILE]"
+                        appendLine("$kind ${entry.name}")
+                    }
+            }
+        }
     }
 
     private fun isPackageAttachmentError(packageName: String, packageContent: String): Boolean {

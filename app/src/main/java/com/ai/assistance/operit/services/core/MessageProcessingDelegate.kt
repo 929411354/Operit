@@ -352,6 +352,7 @@ class MessageProcessingDelegate(
                 ?: return
         val finalContent = resolveFinalContent(streamingMessage)
         streamingMessage.content = finalContent
+        val completedAt = System.currentTimeMillis()
         val finalMessage =
             snapshot?.let { stats ->
                 streamingMessage.withTurnMetrics(
@@ -362,8 +363,12 @@ class MessageProcessingDelegate(
                     outputDurationMs = stats.outputDurationMs,
                     waitDurationMs = stats.waitDurationMs,
                 )
-            }?.copy(content = finalContent, contentStream = null)
-                ?: streamingMessage.copy(content = finalContent, contentStream = null)
+            }?.copy(content = finalContent, contentStream = null, completedAt = completedAt)
+                ?: streamingMessage.copy(
+                    content = finalContent,
+                    contentStream = null,
+                    completedAt = completedAt,
+                )
         withContext(Dispatchers.Main) {
             snapshot?.let { stats ->
                 val matchingUserMessage =
@@ -992,7 +997,8 @@ class MessageProcessingDelegate(
                                     cachedInputTokens = sourceMessage.cachedInputTokens,
                                     sentAt = sourceMessage.sentAt,
                                     outputDurationMs = sourceMessage.outputDurationMs,
-                                    waitDurationMs = sourceMessage.waitDurationMs
+                                    waitDurationMs = sourceMessage.waitDurationMs,
+                                    completedAt = sourceMessage.completedAt,
                                 )
                             waifuEmittedMessages[index] = updatedMessage
                             addMessageToChat(chatId, updatedMessage)
@@ -1238,6 +1244,7 @@ class MessageProcessingDelegate(
                             waitDurationMs = waitDurationMs
                         )
                 }
+                aiMessage = aiMessage.copy(completedAt = System.currentTimeMillis())
 
                 if (isWaifuModeEnabled) {
                     syncWaifuMessageMetricsHandler?.invoke(aiMessage)
@@ -1541,6 +1548,7 @@ class MessageProcessingDelegate(
                     0L
                 }
 
+            val completedAt = System.currentTimeMillis()
             onVariantReady(
                 aiMessage.withTurnMetrics(
                     inputTokens = turnInputTokens,
@@ -1552,6 +1560,7 @@ class MessageProcessingDelegate(
                 ).copy(
                     content = finalContent,
                     contentStream = null,
+                    completedAt = completedAt,
                 )
             )
             terminalState = EnhancedInputProcessingState.Completed
@@ -1624,14 +1633,20 @@ class MessageProcessingDelegate(
             // 优先使用共享流的全量重放缓存重建最终文本，避免完成信号早于收集协程处理尾部字符时丢字。
             val finalContent = resolveFinalContent(aiMessage)
             aiMessage.content = finalContent
+            val completedAt = System.currentTimeMillis()
 
             withContext(Dispatchers.IO) {
                 if (isWaifuModeEnabled) {
-                    syncWaifuMessageMetrics(aiMessage)
+                    syncWaifuMessageMetrics(aiMessage.copy(completedAt = completedAt))
                     forceEmitScrollToBottom(chatId)
                 } else {
                     // 普通模式，直接清理流
-                    val finalMessage = aiMessage.copy(content = finalContent, contentStream = null)
+                    val finalMessage =
+                        aiMessage.copy(
+                            content = finalContent,
+                            contentStream = null,
+                            completedAt = completedAt,
+                        )
                     withContext(Dispatchers.Main) {
                         if (turnOptions.persistTurn && chatId != null) {
                             addMessageToChat(chatId, finalMessage)
@@ -1658,7 +1673,12 @@ class MessageProcessingDelegate(
             try {
                 val aiMessage = aiMessageProvider()
                 val finalContent = aiMessage.content
-                val finalMessage = aiMessage.copy(content = finalContent, contentStream = null)
+                val finalMessage =
+                    aiMessage.copy(
+                        content = finalContent,
+                        contentStream = null,
+                        completedAt = System.currentTimeMillis(),
+                    )
                 withContext(Dispatchers.Main) {
                     if (turnOptions.persistTurn && chatId != null) {
                         addMessageToChat(chatId, finalMessage)

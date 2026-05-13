@@ -196,6 +196,7 @@ interface MessageDao {
             sentAt,
             outputDurationMs,
             waitDurationMs,
+            completedAt,
             displayMode,
             isFavorite
         )
@@ -215,6 +216,7 @@ interface MessageDao {
             sentAt,
             outputDurationMs,
             waitDurationMs,
+            completedAt,
             displayMode,
             isFavorite
         FROM messages

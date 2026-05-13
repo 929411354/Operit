@@ -1148,6 +1148,12 @@ object SystemToolPromptsInternal {
                                         required = false
                                     ),
                                     ToolParameterSchema(
+                                        name = "runtime",
+                                        type = "string",
+                                        description = "optional, runtime slot for this send: main | floating (default floating)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
                                         name = "role_card_id",
                                         type = "string",
                                         description = "optional, role card id to use for this send",
@@ -1847,7 +1853,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "api_provider_type",
                                         type = "string",
-                                        description = "optional, provider enum name (e.g. OPENAI_GENERIC/OPENAI_LOCAL/OPENAI_RESPONSES_GENERIC/DEEPSEEK/GEMINI_GENERIC/LMSTUDIO/OLLAMA/MNN/LLAMA_CPP)",
+                                        description = "optional, provider enum name (e.g. OPENAI_GENERIC/OPENAI_LOCAL/OPENAI_RESPONSES_GENERIC/DEEPSEEK/MIMO/GEMINI_GENERIC/LMSTUDIO/OLLAMA/MNN/LLAMA_CPP)",
                                         required = false
                                     ),
                                     ToolParameterSchema(
@@ -3801,6 +3807,12 @@ object SystemToolPromptsInternal {
                                         required = false
                                     ),
                                     ToolParameterSchema(
+                                        name = "runtime",
+                                        type = "string",
+                                        description = "可选，本次发送使用的 runtime：main | floating（默认 floating）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
                                         name = "role_card_id",
                                         type = "string",
                                         description = "可选，本次发送使用的角色卡 ID",
@@ -4500,7 +4512,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "api_provider_type",
                                         type = "string",
-                                        description = "可选，提供商枚举名（如 OPENAI_GENERIC/OPENAI_LOCAL/OPENAI_RESPONSES_GENERIC/DEEPSEEK/GEMINI_GENERIC/LMSTUDIO/OLLAMA/MNN/LLAMA_CPP）",
+                                        description = "可选，提供商枚举名（如 OPENAI_GENERIC/OPENAI_LOCAL/OPENAI_RESPONSES_GENERIC/DEEPSEEK/MIMO/GEMINI_GENERIC/LMSTUDIO/OLLAMA/MNN/LLAMA_CPP）",
                                         required = false
                                     ),
                                     ToolParameterSchema(

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.ai.assistance.operit.ui.components.CustomScaffold
@@ -101,6 +102,10 @@ import com.ai.assistance.operit.data.preferences.ActivePromptManager
 import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatHistoryDisplayMode
 import com.ai.assistance.operit.ui.theme.getTextColorForBackground
+import com.ai.assistance.operit.plugins.chatview.ChatViewEvent
+import com.ai.assistance.operit.plugins.chatview.ChatViewHookParams
+import com.ai.assistance.operit.plugins.chatview.ChatViewHookPluginRegistry
+import java.util.UUID
 
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -317,6 +322,48 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val hasNewerDisplayHistory by actualViewModel.hasNewerDisplayHistory.collectAsState()
     val isLoadingDisplayWindow by actualViewModel.isLoadingDisplayWindow.collectAsState()
     val popupMessage by actualViewModel.popupMessage.collectAsState()
+    val chatViewRuntime = if (isFloatingMode) "floating" else "main"
+    val chatViewId = rememberSaveable { UUID.randomUUID().toString() }
+    val currentChatView = remember(chatHistories, currentChatId) {
+        chatHistories.find { it.id == currentChatId }
+    }
+    val latestChatViewParams by rememberUpdatedState(
+        ChatViewHookParams(
+            context = context,
+            viewId = chatViewId,
+            chatId = currentChatId,
+            workspacePath = currentChatView?.workspace,
+            workspaceEnv = currentChatView?.workspaceEnv,
+            runtime = chatViewRuntime,
+            title = currentChatView?.title
+        )
+    )
+    var hasDispatchedChatViewOpen by remember(chatViewId) { mutableStateOf(false) }
+    LaunchedEffect(
+        chatViewId,
+        currentChatId,
+        currentChatView?.workspace,
+        currentChatView?.workspaceEnv,
+        currentChatView?.title,
+        chatViewRuntime
+    ) {
+        val event =
+            if (hasDispatchedChatViewOpen) {
+                ChatViewEvent.VIEW_UPDATED
+            } else {
+                hasDispatchedChatViewOpen = true
+                ChatViewEvent.VIEW_OPENED
+            }
+        ChatViewHookPluginRegistry.dispatchAsync(event, latestChatViewParams)
+    }
+    DisposableEffect(chatViewId) {
+        onDispose {
+            ChatViewHookPluginRegistry.dispatchAsync(
+                ChatViewEvent.VIEW_CLOSED,
+                latestChatViewParams
+            )
+        }
+    }
     // 收集滚动事件
     val scrollToBottomEvent = actualViewModel.scrollToBottomEvent
     // 从ViewModel收集新的状态
@@ -1009,10 +1056,12 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                                     .graphicsLayer {
                                                         translationY = -inputBarTranslationYPx
                                                     },
+                                    currentChatId = currentChatId,
                                     featureStates = featureStates,
                                     onToggleFeature = { featureKey ->
                                         actualViewModel.toggleFeature(featureKey)
                                     },
+                                    inputMenuRuntime = chatViewRuntime,
                                     permissionLevel =
                                             actualViewModel.masterPermissionLevel
                                                     .collectAsState()
@@ -1092,6 +1141,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 actualViewModel = actualViewModel,
                                 inputStyle = inputStyle,
                                 currentChatId = currentChatId,
+                                inputMenuRuntime = chatViewRuntime,
                                 enableEnterToSend = enableEnterToSend,
                                 isLoading = isLoading,
                                 inputState = inputProcessingState,
@@ -1482,6 +1532,7 @@ private fun ChatInputBottomBar(
     actualViewModel: ChatViewModel,
     inputStyle: String,
     currentChatId: String?,
+    inputMenuRuntime: String,
     enableEnterToSend: Boolean,
     isLoading: Boolean,
     inputState: InputProcessingState,
@@ -1787,8 +1838,10 @@ private fun ChatInputBottomBar(
                 onThinkingQualityLevelChange = actualViewModel::updateThinkingQualityLevel,
                 enableMaxContextMode = enableMaxContextMode,
                 onToggleEnableMaxContextMode = actualViewModel::toggleEnableMaxContextMode,
+                currentChatId = currentChatId,
                 featureStates = featureStates,
                 onToggleFeature = actualViewModel::toggleFeature,
+                inputMenuRuntime = inputMenuRuntime,
                 permissionLevel = permissionLevel,
                 onTogglePermission = actualViewModel::toggleMasterPermission,
                 enableMemoryAutoUpdate = enableMemoryAutoUpdate,
@@ -1939,8 +1992,7 @@ private fun MentionSuggestionOverlay(
                 viewModel = actualViewModel,
                 panelStyle = panelStyle,
                 onFileSelected = { relativePath ->
-                    actualViewModel.replaceCurrentMentionToken(relativePath)
-                    actualViewModel.hideMentionSuggestionPanel()
+                    actualViewModel.selectMentionWorkspaceEntry(relativePath)
                 },
                 onPackageSelected = actualViewModel::selectMentionPackage,
             )

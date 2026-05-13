@@ -138,12 +138,27 @@ fun MemorySearchSettingsDialog(
                     SliderSettingItem(
                         title = stringResource(R.string.memory_auto_save_interval_minutes),
                         value = editedAutoSaveIntervalMinutes,
-                        valueText = "${editedAutoSaveIntervalMinutes.roundToInt()} min",
+                        valueText = stringResource(
+                            R.string.memory_auto_save_interval_value,
+                            editedAutoSaveIntervalMinutes.roundToInt(),
+                            MemorySearchSettingsPreferences.MIN_AUTO_SAVE_INTERVAL_MINUTES,
+                            MemorySearchSettingsPreferences.MAX_AUTO_SAVE_INTERVAL_MINUTES
+                        ),
                         valueRange = MemorySearchSettingsPreferences.MIN_AUTO_SAVE_INTERVAL_MINUTES.toFloat()..
                             MemorySearchSettingsPreferences.MAX_AUTO_SAVE_INTERVAL_MINUTES.toFloat(),
                         steps = MemorySearchSettingsPreferences.MAX_AUTO_SAVE_INTERVAL_MINUTES -
                             MemorySearchSettingsPreferences.MIN_AUTO_SAVE_INTERVAL_MINUTES - 1,
                         onValueChange = { editedAutoSaveIntervalMinutes = it }
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.memory_auto_save_interval_hint,
+                            MemorySearchSettingsPreferences.MIN_AUTO_SAVE_INTERVAL_MINUTES,
+                            MemorySearchSettingsPreferences.MAX_AUTO_SAVE_INTERVAL_MINUTES,
+                            MemorySearchSettingsPreferences.DEFAULT_AUTO_SAVE_INTERVAL_MINUTES
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 

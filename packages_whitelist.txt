@@ -39,3 +39,4 @@ remote_operit
 worldbook
 qqbot
 thinking_guidance
+plan_mode

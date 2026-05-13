@@ -2422,6 +2422,11 @@ class JsEngine(private val context: Context) {
         }
 
         @JavascriptInterface
+        fun registerToolPkgChatViewHook(specJson: String) {
+            toolPkgRegistrationSession.appendChatViewHook(specJson)
+        }
+
+        @JavascriptInterface
         fun registerToolPkgToolLifecycleHook(specJson: String) {
             toolPkgRegistrationSession.appendToolLifecycleHook(specJson)
         }

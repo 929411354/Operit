@@ -105,6 +105,7 @@ data class OperitArchivedMessageVariant(
     val sentAt: Long = 0L,
     val outputDurationMs: Long = 0L,
     val waitDurationMs: Long = 0L,
+    val completedAt: Long = 0L,
 ) {
     fun toEntity(chatId: String, messageTimestamp: Long): MessageVariantEntity {
         return MessageVariantEntity(
@@ -121,6 +122,7 @@ data class OperitArchivedMessageVariant(
             sentAt = sentAt,
             outputDurationMs = outputDurationMs,
             waitDurationMs = waitDurationMs,
+            completedAt = completedAt,
         )
     }
 
@@ -138,6 +140,7 @@ data class OperitArchivedMessageVariant(
                 sentAt = entity.sentAt,
                 outputDurationMs = entity.outputDurationMs,
                 waitDurationMs = entity.waitDurationMs,
+                completedAt = entity.completedAt,
             )
         }
     }

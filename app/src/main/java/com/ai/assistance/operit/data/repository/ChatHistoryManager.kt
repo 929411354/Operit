@@ -987,6 +987,7 @@ class ChatHistoryManager private constructor(private val context: Context) {
                             sentAt = replacementVariant.sentAt,
                             outputDurationMs = replacementVariant.outputDurationMs,
                             waitDurationMs = replacementVariant.waitDurationMs,
+                            completedAt = replacementVariant.completedAt,
                         )
                     messageDao.updateMessage(promotedBaseMessage)
                     messageVariantDao.deleteVariant(

@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.TextUnit.Companion.Unspecified
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -415,6 +416,7 @@ fun CanvasMarkdownNodeRenderer(
     nodeKey: String,
     node: MarkdownNodeStable,
     textColor: Color,
+    fontSize: TextUnit = Unspecified,
     modifier: Modifier = Modifier,
     onLinkClick: ((String) -> Unit)? = null,
     index: Int,
@@ -430,15 +432,28 @@ fun CanvasMarkdownNodeRenderer(
     // 缓存字体大小 - 避免每次 recompose 都从 MaterialTheme 读取
     // 只有当 MaterialTheme 真正变化时才会重新计算
     val typography = MaterialTheme.typography
-    val fontSizes = remember(typography) {
+    val fontSizes = remember(typography, fontSize) {
+        val defaultBodySize = typography.bodyMedium.fontSize
+        val scale =
+            if (
+                fontSize == Unspecified ||
+                    !defaultBodySize.value.isFinite() ||
+                    defaultBodySize.value <= 0f ||
+                    !fontSize.value.isFinite() ||
+                    fontSize.value <= 0f
+            ) {
+                1f
+            } else {
+                fontSize.value / defaultBodySize.value
+            }
         FontSizes(
-            bodyMedium = typography.bodyMedium.fontSize,
-            headlineLarge = typography.headlineLarge.fontSize,
-            headlineMedium = typography.headlineMedium.fontSize,
-            headlineSmall = typography.headlineSmall.fontSize,
-            titleLarge = typography.titleLarge.fontSize,
-            titleMedium = typography.titleMedium.fontSize,
-            titleSmall = typography.titleSmall.fontSize
+            bodyMedium = scaleMarkdownTextUnit(typography.bodyMedium.fontSize, scale),
+            headlineLarge = scaleMarkdownTextUnit(typography.headlineLarge.fontSize, scale),
+            headlineMedium = scaleMarkdownTextUnit(typography.headlineMedium.fontSize, scale),
+            headlineSmall = scaleMarkdownTextUnit(typography.headlineSmall.fontSize, scale),
+            titleLarge = scaleMarkdownTextUnit(typography.titleLarge.fontSize, scale),
+            titleMedium = scaleMarkdownTextUnit(typography.titleMedium.fontSize, scale),
+            titleSmall = scaleMarkdownTextUnit(typography.titleSmall.fontSize, scale)
         )
     }
     
@@ -484,6 +499,16 @@ private data class FontSizes(
     val titleMedium: TextUnit,
     val titleSmall: TextUnit
 )
+
+private fun scaleMarkdownTextUnit(
+    base: TextUnit,
+    scale: Float
+): TextUnit {
+    if (!scale.isFinite() || scale <= 0f || scale == 1f) {
+        return base
+    }
+    return (base.value * scale).sp
+}
 
 @Composable
 private fun renderNodeContent(

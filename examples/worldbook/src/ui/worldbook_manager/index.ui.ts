@@ -912,7 +912,7 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
                     UI.IconButton(
                       {
                         onClick: () => setShowSnippetPicker(false),
-                        icon: "close"
+                        icon: Icons.Close
                       },
                       []
                     )
