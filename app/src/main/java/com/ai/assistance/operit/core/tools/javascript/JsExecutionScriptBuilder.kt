@@ -686,34 +686,26 @@ internal fun buildExecutionRuntimeBridgeScript(): String {
                     return null;
                 }
 
-                function isUiModuleRuntime() {
-                    var uiModuleId = text(
-                        readCallValue(
-                            '__operit_ui_module_id',
-                            readCallValue('uiModuleId', '')
-                        )
-                    );
-                    if (uiModuleId.length > 0) {
-                        return true;
-                    }
-                    var contextKey = text(
-                        readCallValue(
-                            '__operit_compose_execution_context_key',
-                            readCallValue('executionContextKey', '')
-                        )
-                    );
-                    return contextKey.length > 0 && !/^toolpkg_main:/i.test(contextKey);
-                }
-
                 function getCurrentToolPkgRuntimeKind() {
                     var explicitRuntime = text(
                         readCallValue('__operit_toolpkg_runtime_kind', '')
                     ).trim().toLowerCase();
-                    if (explicitRuntime === 'main' || explicitRuntime === 'ui' || explicitRuntime === 'sandbox') {
+                    if (
+                        explicitRuntime === 'main' ||
+                        explicitRuntime === 'ui' ||
+                        explicitRuntime === 'sandbox' ||
+                        explicitRuntime === 'provider'
+                    ) {
                         return explicitRuntime;
                     }
-                    if (isUiModuleRuntime()) {
-                        return 'ui';
+                    var contextKey = text(
+                        readCallValue(
+                            '__operit_execution_context_key',
+                            readCallValue('executionContextKey', '')
+                        )
+                    ).trim();
+                    if (/^toolpkg_provider:/i.test(contextKey)) {
+                        return 'provider';
                     }
                     var subpackageId = text(
                         readCallValue('__operit_toolpkg_subpackage_id', '')
@@ -823,14 +815,66 @@ internal fun buildExecutionRuntimeBridgeScript(): String {
                     ipcApi.off = function(channel, handler) {
                         return unregisterToolPkgIpcHandler(channel, handler);
                     };
-                    ipcApi.call = function(channel, payload) {
+                    ipcApi.call = function(channel, payload, options) {
                         var normalizedChannel = normalizeToolPkgIpcChannel(channel);
                         if (normalizedChannel.length === 0) {
                             return Promise.reject(new Error('ToolPkg.ipc channel is required'));
                         }
+                        var callOptions = options && typeof options === 'object' ? options : {};
+                        var targetRuntime = text(callOptions.targetRuntime || '').trim().toLowerCase();
+                        if (
+                            targetRuntime &&
+                            targetRuntime !== 'main' &&
+                            targetRuntime !== 'ui' &&
+                            targetRuntime !== 'sandbox' &&
+                            targetRuntime !== 'provider'
+                        ) {
+                            return Promise.reject(new Error('ToolPkg.ipc targetRuntime is invalid: ' + targetRuntime));
+                        }
+                        var targetContextKey = text(callOptions.targetContextKey || '').trim();
+                        var hasTargetOptions = targetRuntime.length > 0 || targetContextKey.length > 0;
                         var currentContextKey = getCurrentToolPkgExecutionContextKey();
                         var currentRuntime = getCurrentToolPkgRuntimeKind();
-                        if (currentRuntime === 'main') {
+                        if (
+                            currentRuntime === 'main' &&
+                            (
+                                !hasTargetOptions ||
+                                (
+                                    (targetRuntime.length === 0 || targetRuntime === 'main') &&
+                                    (targetContextKey.length === 0 || targetContextKey === currentContextKey)
+                                )
+                            )
+                        ) {
+                            try {
+                                return Promise.resolve(
+                                    invokeToolPkgIpcLocal(normalizedChannel, payload, {
+                                        channel: normalizedChannel,
+                                        callerContextKey: currentContextKey,
+                                        currentContextKey: currentContextKey,
+                                        currentRuntime: currentRuntime,
+                                        packageTarget: packageTarget
+                                    })
+                                );
+                            } catch (error) {
+                                return Promise.reject(error);
+                            }
+                        }
+                        if (
+                            targetContextKey.length > 0 &&
+                            targetContextKey === currentContextKey &&
+                            targetRuntime.length > 0 &&
+                            targetRuntime !== currentRuntime
+                        ) {
+                            return Promise.reject(
+                                new Error(
+                                    'ToolPkg.ipc targetRuntime does not match current runtime: ' +
+                                        targetRuntime +
+                                        ' != ' +
+                                        currentRuntime
+                                )
+                            );
+                        }
+                        if (targetContextKey.length > 0 && targetContextKey === currentContextKey) {
                             try {
                                 return Promise.resolve(
                                     invokeToolPkgIpcLocal(normalizedChannel, payload, {
@@ -849,9 +893,9 @@ internal fun buildExecutionRuntimeBridgeScript(): String {
                             !packageTarget ||
                             typeof NativeInterface === 'undefined' ||
                             !NativeInterface ||
-                            typeof NativeInterface.invokeToolPkgMainIpcAsync !== 'function'
+                            typeof NativeInterface.invokeToolPkgIpcAsync !== 'function'
                         ) {
-                            return Promise.reject(new Error('ToolPkg.ipc main runtime bridge is unavailable'));
+                            return Promise.reject(new Error('ToolPkg.ipc runtime bridge is unavailable'));
                         }
                         var payloadJson;
                         try {
@@ -930,10 +974,12 @@ internal fun buildExecutionRuntimeBridgeScript(): String {
                                 );
                             };
                             try {
-                                NativeInterface.invokeToolPkgMainIpcAsync(
+                                NativeInterface.invokeToolPkgIpcAsync(
                                     callbackId,
                                     packageTarget,
                                     currentContextKey,
+                                    targetContextKey,
+                                    targetRuntime,
                                     normalizedChannel,
                                     payloadJson
                                 );

@@ -1,19 +1,46 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.qqbotIpc = exports.QQBOT_AUTO_REPLY_RUN_ONCE_IPC_CHANNEL = exports.QQBOT_AUTO_REPLY_CONFIGURE_IPC_CHANNEL = exports.QQBOT_SERVICE_STOP_IPC_CHANNEL = exports.QQBOT_SERVICE_START_IPC_CHANNEL = exports.QQBOT_CONFIGURE_IPC_CHANNEL = exports.QQBOT_DASHBOARD_STATUS_IPC_CHANNEL = void 0;
 exports.withContext = withContext;
-exports.qqbotDashboardStatusViaIpc = qqbotDashboardStatusViaIpc;
-exports.qqbotConfigureViaIpc = qqbotConfigureViaIpc;
-exports.qqbotServiceStartViaIpc = qqbotServiceStartViaIpc;
-exports.qqbotServiceStopViaIpc = qqbotServiceStopViaIpc;
-exports.qqbotAutoReplyConfigureViaIpc = qqbotAutoReplyConfigureViaIpc;
-exports.qqbotAutoReplyRunOnceViaIpc = qqbotAutoReplyRunOnceViaIpc;
-exports.QQBOT_DASHBOARD_STATUS_IPC_CHANNEL = "qqbot.dashboard_status";
-exports.QQBOT_CONFIGURE_IPC_CHANNEL = "qqbot.configure";
-exports.QQBOT_SERVICE_START_IPC_CHANNEL = "qqbot.service_start";
-exports.QQBOT_SERVICE_STOP_IPC_CHANNEL = "qqbot.service_stop";
-exports.QQBOT_AUTO_REPLY_CONFIGURE_IPC_CHANNEL = "qqbot.auto_reply.configure";
-exports.QQBOT_AUTO_REPLY_RUN_ONCE_IPC_CHANNEL = "qqbot.auto_reply.run_once";
+const QQBotRuntime = __importStar(require("./qqbot_runtime"));
+const QQBotAutoReply = __importStar(require("./qqbot_auto_reply"));
+const QQBOT_CONTEXT_RUN_IPC_CHANNEL = "qqbot.context.run";
+const qqbotContextFunctions = {};
 function previewJson(value, maxLength = 800) {
     try {
         const text = JSON.stringify(value);
@@ -22,75 +49,107 @@ function previewJson(value, maxLength = 800) {
         }
         return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
     }
-    catch (_error) {
+    catch (error) {
+        const errorText = error instanceof Error ? error.message : "preview failed";
+        console.error(`[qqbot_ipc] preview json failed: ${errorText}`);
         return "[unserializable]";
     }
 }
-function readFailureMessage(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return "";
+function validateContextEnvName(name) {
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
+        throw new Error(`withContext env name is not a valid identifier: ${name}`);
     }
-    const success = Reflect.get(value, "success");
-    if (success !== false) {
-        return "";
-    }
-    const error = Reflect.get(value, "error");
-    return typeof error === "string" && error.trim() ? error.trim() : "success=false";
 }
-function defineIpc(channel) {
-    return {
-        channel,
-        async invoke(...args) {
-            const payload = args.length > 0 ? args[0] : undefined;
-            try {
-                const result = await ToolPkg.ipc.call(channel, payload);
-                const failureMessage = readFailureMessage(result);
-                if (failureMessage) {
-                    console.error(`[qqbot_ipc] call returned failure: channel=${channel}, error=${failureMessage}, payload=${previewJson(payload)}, result=${previewJson(result)}`);
-                }
-                return result;
-            }
-            catch (error) {
-                const errorText = error instanceof Error
-                    ? error.message || "error"
-                    : (typeof error === "string" || error == null ? error || "error" : "error");
-                console.error(`[qqbot_ipc] call threw: channel=${channel}, error=${errorText}, payload=${previewJson(payload)}`);
-                throw error;
-            }
+function buildContextRunnerFactorySource(functionSource, envNames, functionNames) {
+    const envBindings = envNames
+        .map((name) => {
+        validateContextEnvName(name);
+        return `const ${name} = __qqbotContextEnvs[${JSON.stringify(name)}];`;
+    })
+        .join("\n");
+    const functionBindings = functionNames
+        .map((name) => {
+        validateContextEnvName(name);
+        return `const ${name} = __qqbotContextFunctions[${JSON.stringify(name)}];`;
+    })
+        .join("\n");
+    return `(function(__qqbotContextEnvs, __qqbotContextFunctions) {
+${envBindings}
+${functionBindings}
+return (${functionSource});
+})`;
+}
+function normalizeContextRunnerSource(functionSource) {
+    const functionNames = Object.keys(qqbotContextFunctions)
+        .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("|");
+    if (!functionNames) {
+        return functionSource;
+    }
+    return functionSource
+        .replace(new RegExp(`\\(\\s*0\\s*,\\s*[A-Za-z_$][A-Za-z0-9_$]*\\.(${functionNames})\\s*\\)`, "g"), "$1")
+        .replace(new RegExp(`\\b[A-Za-z_$][A-Za-z0-9_$]*\\.(${functionNames})\\b`, "g"), "$1");
+}
+async function executeContextRunner(payload) {
+    const envs = payload.envs;
+    try {
+        const functionSource = normalizeContextRunnerSource(payload.functionSource);
+        const factorySource = buildContextRunnerFactorySource(functionSource, Object.keys(envs), Object.keys(qqbotContextFunctions));
+        const createRunner = eval(factorySource);
+        const runner = createRunner(envs, qqbotContextFunctions);
+        if (typeof runner !== "function") {
+            throw new Error("withContext runner source did not evaluate to a function");
         }
-    };
+        return await runner();
+    }
+    catch (error) {
+        const errorText = error instanceof Error ? error.message : "withContext runner failed";
+        console.error(`[qqbot_ipc] withContext target execution failed: error=${errorText}, envs=${previewJson(envs)}`);
+        throw error;
+    }
 }
-function withContext(definitions) {
-    const result = {};
-    const keys = Object.keys(definitions);
-    keys.forEach((key) => {
-        result[key] = definitions[key].invoke;
+function registerQQBotContextModule(moduleExports) {
+    Object.keys(moduleExports).forEach((name) => {
+        validateContextEnvName(name);
+        const value = moduleExports[name];
+        const candidate = value;
+        if (typeof candidate === "function") {
+            qqbotContextFunctions[name] = candidate;
+        }
     });
-    return result;
 }
-exports.qqbotIpc = withContext({
-    dashboardStatus: defineIpc(exports.QQBOT_DASHBOARD_STATUS_IPC_CHANNEL),
-    configure: defineIpc(exports.QQBOT_CONFIGURE_IPC_CHANNEL),
-    serviceStart: defineIpc(exports.QQBOT_SERVICE_START_IPC_CHANNEL),
-    serviceStop: defineIpc(exports.QQBOT_SERVICE_STOP_IPC_CHANNEL),
-    autoReplyConfigure: defineIpc(exports.QQBOT_AUTO_REPLY_CONFIGURE_IPC_CHANNEL),
-    autoReplyRunOnce: defineIpc(exports.QQBOT_AUTO_REPLY_RUN_ONCE_IPC_CHANNEL)
-});
-async function qqbotDashboardStatusViaIpc(params = {}) {
-    return await exports.qqbotIpc.dashboardStatus(params);
+let qqbotContextRunnerRegistered = false;
+function registerQQBotContextRunner() {
+    if (qqbotContextRunnerRegistered) {
+        return;
+    }
+    qqbotContextRunnerRegistered = true;
+    ToolPkg.ipc.on(QQBOT_CONTEXT_RUN_IPC_CHANNEL, async (payload) => await executeContextRunner(payload));
 }
-async function qqbotConfigureViaIpc(params = {}) {
-    return await exports.qqbotIpc.configure(params);
+registerQQBotContextRunner();
+registerQQBotContextModule(QQBotRuntime);
+registerQQBotContextModule(QQBotAutoReply);
+async function runWithContext(kind, envs, runner) {
+    const payload = {
+        functionSource: runner.toString(),
+        envs
+    };
+    try {
+        return await ToolPkg.ipc.call(QQBOT_CONTEXT_RUN_IPC_CHANNEL, payload, {
+            targetRuntime: kind
+        });
+    }
+    catch (error) {
+        const errorText = error instanceof Error ? error.message : "withContext call failed";
+        console.error(`[qqbot_ipc] withContext call failed: kind=${kind}, error=${errorText}, envs=${previewJson(envs)}`);
+        throw error;
+    }
 }
-async function qqbotServiceStartViaIpc(params = {}) {
-    return await exports.qqbotIpc.serviceStart(params);
+function withContext(kind, envs, runner) {
+    if (!runner) {
+        throw new Error("withContext requires runner");
+    }
+    return runWithContext(kind, envs, runner);
 }
-async function qqbotServiceStopViaIpc(params = {}) {
-    return await exports.qqbotIpc.serviceStop(params);
-}
-async function qqbotAutoReplyConfigureViaIpc(params = {}) {
-    return await exports.qqbotIpc.autoReplyConfigure(params);
-}
-async function qqbotAutoReplyRunOnceViaIpc() {
-    return await exports.qqbotIpc.autoReplyRunOnce();
-}
+__exportStar(require("./qqbot_runtime"), exports);
+__exportStar(require("./qqbot_auto_reply"), exports);

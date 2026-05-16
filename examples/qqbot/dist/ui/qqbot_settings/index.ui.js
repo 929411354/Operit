@@ -396,7 +396,8 @@ function Screen(ctx) {
             clearMessages();
         }
         try {
-            const dashboardStatus = await qqbot_ipc_js_1.qqbotIpc.dashboardStatus({ summary_only: true });
+            const params = { summary_only: true };
+            const dashboardStatus = await (0, qqbot_ipc_js_1.withContext)("main", { params }, async () => await (0, qqbot_ipc_js_1.qqbot_dashboard_status)(params));
             if (!dashboardStatus?.success) {
                 logSettingsError("dashboardStatus returned failure", dashboardStatus);
                 throw new Error(String(dashboardStatus?.error || "qqbot_dashboard_status failed"));
@@ -469,11 +470,12 @@ function Screen(ctx) {
         if (appSecretState.value.trim()) {
             params.app_secret = appSecretState.value.trim();
         }
-        await runAction(testConnection ? "save_and_test" : "save_credentials", async () => await qqbot_ipc_js_1.qqbotIpc.configure(params), testConnection ? text.testingDone : text.savingDone);
+        await runAction(testConnection ? "save_and_test" : "save_credentials", async () => await (0, qqbot_ipc_js_1.withContext)("main", { params }, async () => await (0, qqbot_ipc_js_1.qqbot_configure)(params)), testConnection ? text.testingDone : text.savingDone);
     };
     const saveSandboxSetting = async (checked) => {
         useSandboxState.set(checked);
-        await runAction("save_credentials", async () => await qqbot_ipc_js_1.qqbotIpc.configure({ use_sandbox: checked }), text.savingDone);
+        const params = { use_sandbox: checked };
+        await runAction("save_credentials", async () => await (0, qqbot_ipc_js_1.withContext)("main", { params }, async () => await (0, qqbot_ipc_js_1.qqbot_configure)(params)), text.savingDone);
     };
     const buildAutomationParams = () => {
         const pollIntervalMs = asPositiveNumber(pollIntervalInputState.value);
@@ -495,7 +497,8 @@ function Screen(ctx) {
         };
     };
     const saveAutomation = async () => {
-        await runAction("save_automation", async () => await qqbot_ipc_js_1.qqbotIpc.autoReplyConfigure(buildAutomationParams()), text.savingDone);
+        const params = buildAutomationParams();
+        await runAction("save_automation", async () => await (0, qqbot_ipc_js_1.withContext)("main", { params }, async () => await (0, qqbot_ipc_js_1.qqbot_auto_reply_configure)(params)), text.savingDone);
     };
     const toggleAutoReplyEnabled = async (checked) => {
         if (!listenerEnabledState.value) {
@@ -506,11 +509,12 @@ function Screen(ctx) {
         if (isAnyBusy) {
             return;
         }
-        await runAction("save_automation", async () => await qqbot_ipc_js_1.qqbotIpc.autoReplyConfigure({
+        const params = {
             ...buildAutomationParams(),
             enabled: checked,
             start_now: checked
-        }), text.savingDone);
+        };
+        await runAction("save_automation", async () => await (0, qqbot_ipc_js_1.withContext)("main", { params }, async () => await (0, qqbot_ipc_js_1.qqbot_auto_reply_configure)(params)), text.savingDone);
     };
     const toggleListenerEnabled = async (checked) => {
         listenerEnabledState.set(checked);
@@ -521,7 +525,9 @@ function Screen(ctx) {
             return;
         }
         await runAction(checked ? "start_service" : "stop_service", async () => {
-            return checked ? await qqbot_ipc_js_1.qqbotIpc.serviceStart({}) : await qqbot_ipc_js_1.qqbotIpc.serviceStop({});
+            return await (0, qqbot_ipc_js_1.withContext)("main", { checked }, async () => {
+                return checked ? await (0, qqbot_ipc_js_1.qqbot_service_start)({}) : await (0, qqbot_ipc_js_1.qqbot_service_stop)({});
+            });
         }, text.actionDone);
     };
     const statusLines = [
@@ -810,7 +816,7 @@ function Screen(ctx) {
                     text: isBusy("run_once") ? text.loading : text.runOnce,
                     enabled: !isAnyBusy,
                     fillMaxWidth: true,
-                    onClick: async () => await runAction("run_once", async () => await qqbot_ipc_js_1.qqbotIpc.autoReplyRunOnce(), text.actionDone)
+                    onClick: async () => await runAction("run_once", async () => await (0, qqbot_ipc_js_1.withContext)("main", {}, async () => await (0, qqbot_ipc_js_1.qqbot_auto_reply_run_once)()), text.actionDone)
                 })
             ])
         ])

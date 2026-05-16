@@ -283,6 +283,15 @@ class JsToolManager private constructor(
         )
     }
 
+    private fun failure(toolName: String, failure: JsExecutionFailure): ToolResult {
+        return ToolResult(
+            toolName = toolName,
+            success = false,
+            result = StringResultData(failure.dataText),
+            error = failure.message
+        )
+    }
+
     private fun trace(
         toolName: String,
         kind: String,
@@ -381,9 +390,9 @@ class JsToolManager private constructor(
                         executionListener = traceListener
                     )
 
-                    val normalizedError = extractJsExecutionErrorMessage(result)
-                    if (normalizedError != null) {
-                        send(failure(tool.name, normalizedError))
+                    val normalizedFailure = extractJsExecutionFailure(result)
+                    if (normalizedFailure != null) {
+                        send(failure(tool.name, normalizedFailure))
                     } else {
                         send(success(tool.name, result))
                     }

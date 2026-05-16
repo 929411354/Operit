@@ -1,145 +1,182 @@
-import type {
-  QQBotActionResult,
-  QQBotAutoReplyConfigureParams,
-  QQBotConfigureParams,
-  QQBotDashboardStatusParams,
-  QQBotDashboardStatusResult,
-  QQBotServiceStartParams,
-  QQBotServiceStopParams
-} from "./qqbot_common";
+import * as QQBotRuntime from "./qqbot_runtime";
+import * as QQBotAutoReply from "./qqbot_auto_reply";
 
-export const QQBOT_DASHBOARD_STATUS_IPC_CHANNEL = "qqbot.dashboard_status";
-export const QQBOT_CONFIGURE_IPC_CHANNEL = "qqbot.configure";
-export const QQBOT_SERVICE_START_IPC_CHANNEL = "qqbot.service_start";
-export const QQBOT_SERVICE_STOP_IPC_CHANNEL = "qqbot.service_stop";
-export const QQBOT_AUTO_REPLY_CONFIGURE_IPC_CHANNEL = "qqbot.auto_reply.configure";
-export const QQBOT_AUTO_REPLY_RUN_ONCE_IPC_CHANNEL = "qqbot.auto_reply.run_once";
+const QQBOT_CONTEXT_RUN_IPC_CHANNEL = "qqbot.context.run";
 
-type IpcChannelDefinition<TParams, TResult> = {
-  channel: string;
-  invoke: (...args: undefined extends TParams ? [] | [params: TParams] : [params: TParams]) => Promise<TResult>;
+type QQBotContextRunner<TResult extends object> = () => TResult | Promise<TResult>;
+type QQBotContextFunction = (...args: readonly object[]) => object | Promise<object>;
+type QQBotContextModuleValue = QQBotContextFunction | object | string | number | boolean | null | undefined;
+type QQBotContextModule = Record<string, QQBotContextModuleValue>;
+
+type QQBotContextRunPayload = {
+  functionSource: string;
+  envs: object;
 };
 
-type IpcChannelDefinitions = Record<string, IpcChannelDefinition<unknown, unknown>>;
+const qqbotContextFunctions: Record<string, QQBotContextFunction> = {};
 
-type IpcContext<TDefinitions extends IpcChannelDefinitions> = {
-  [TKey in keyof TDefinitions]:
-    TDefinitions[TKey] extends IpcChannelDefinition<infer TParams, infer TResult>
-      ? (...args: undefined extends TParams ? [] | [params: TParams] : [params: TParams]) => Promise<TResult>
-      : never;
-};
-
-function previewJson(value: unknown, maxLength = 800): string {
+function previewJson(
+  value: object | string | number | boolean | null | undefined,
+  maxLength = 800
+): string {
   try {
     const text = JSON.stringify(value);
     if (typeof text !== "string") {
       return "";
     }
     return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
-  } catch (_error) {
+  } catch (error) {
+    const errorText = error instanceof Error ? error.message : "preview failed";
+    console.error(`[qqbot_ipc] preview json failed: ${errorText}`);
     return "[unserializable]";
   }
 }
 
-function readFailureMessage(value: unknown): string {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return "";
+function validateContextEnvName(name: string): void {
+  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
+    throw new Error(`withContext env name is not a valid identifier: ${name}`);
   }
-  const success = Reflect.get(value, "success");
-  if (success !== false) {
-    return "";
-  }
-  const error = Reflect.get(value, "error");
-  return typeof error === "string" && error.trim() ? error.trim() : "success=false";
 }
 
-function defineIpc<TParams, TResult>(channel: string): IpcChannelDefinition<TParams, TResult> {
-  return {
-    channel,
-    async invoke(...args: undefined extends TParams ? [] | [params: TParams] : [params: TParams]): Promise<TResult> {
-      const payload = args.length > 0 ? args[0] : undefined;
-      try {
-        const result = await ToolPkg.ipc.call<TParams, TResult>(channel, payload as TParams);
-        const failureMessage = readFailureMessage(result);
-        if (failureMessage) {
-          console.error(
-            `[qqbot_ipc] call returned failure: channel=${channel}, error=${failureMessage}, payload=${previewJson(payload)}, result=${previewJson(result)}`
-          );
-        }
-        return result;
-      } catch (error) {
-        const errorText = error instanceof Error
-          ? error.message || "error"
-          : (typeof error === "string" || error == null ? error || "error" : "error");
-        console.error(
-          `[qqbot_ipc] call threw: channel=${channel}, error=${errorText}, payload=${previewJson(payload)}`
-        );
-        throw error;
-      }
+function buildContextRunnerFactorySource(
+  functionSource: string,
+  envNames: string[],
+  functionNames: string[]
+): string {
+  const envBindings = envNames
+    .map((name) => {
+      validateContextEnvName(name);
+      return `const ${name} = __qqbotContextEnvs[${JSON.stringify(name)}];`;
+    })
+    .join("\n");
+  const functionBindings = functionNames
+    .map((name) => {
+      validateContextEnvName(name);
+      return `const ${name} = __qqbotContextFunctions[${JSON.stringify(name)}];`;
+    })
+    .join("\n");
+  return `(function(__qqbotContextEnvs, __qqbotContextFunctions) {
+${envBindings}
+${functionBindings}
+return (${functionSource});
+})`;
+}
+
+function normalizeContextRunnerSource(functionSource: string): string {
+  const functionNames = Object.keys(qqbotContextFunctions)
+    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  if (!functionNames) {
+    return functionSource;
+  }
+  return functionSource
+    .replace(
+      new RegExp(`\\(\\s*0\\s*,\\s*[A-Za-z_$][A-Za-z0-9_$]*\\.(${functionNames})\\s*\\)`, "g"),
+      "$1"
+    )
+    .replace(
+      new RegExp(`\\b[A-Za-z_$][A-Za-z0-9_$]*\\.(${functionNames})\\b`, "g"),
+      "$1"
+    );
+}
+
+async function executeContextRunner(payload: QQBotContextRunPayload): Promise<object> {
+  const envs = payload.envs;
+  try {
+    const functionSource = normalizeContextRunnerSource(payload.functionSource);
+    const factorySource = buildContextRunnerFactorySource(
+      functionSource,
+      Object.keys(envs),
+      Object.keys(qqbotContextFunctions)
+    );
+    const createRunner = eval(factorySource) as (
+      envs: object,
+      functions: Record<string, QQBotContextFunction>
+    ) => QQBotContextRunner<object>;
+    const runner = createRunner(envs, qqbotContextFunctions);
+    if (typeof runner !== "function") {
+      throw new Error("withContext runner source did not evaluate to a function");
     }
-  };
+    return await runner();
+  } catch (error) {
+    const errorText = error instanceof Error ? error.message : "withContext runner failed";
+    console.error(
+      `[qqbot_ipc] withContext target execution failed: error=${errorText}, envs=${previewJson(envs)}`
+    );
+    throw error;
+  }
 }
 
-export function withContext<TDefinitions extends IpcChannelDefinitions>(
-  definitions: TDefinitions
-): IpcContext<TDefinitions> {
-  const result: Partial<IpcContext<TDefinitions>> = {};
-  const keys = Object.keys(definitions) as Array<keyof TDefinitions>;
-  keys.forEach((key) => {
-    result[key] = definitions[key].invoke as IpcContext<TDefinitions>[typeof key];
+function registerQQBotContextModule(moduleExports: QQBotContextModule): void {
+  Object.keys(moduleExports).forEach((name) => {
+    validateContextEnvName(name);
+    const value = moduleExports[name];
+    const candidate = value as QQBotContextFunction;
+    if (typeof candidate === "function") {
+      qqbotContextFunctions[name] = candidate;
+    }
   });
-  return result as IpcContext<TDefinitions>;
 }
 
-export const qqbotIpc = withContext({
-  dashboardStatus: defineIpc<QQBotDashboardStatusParams, QQBotDashboardStatusResult>(
-    QQBOT_DASHBOARD_STATUS_IPC_CHANNEL
-  ),
-  configure: defineIpc<QQBotConfigureParams, QQBotActionResult>(
-    QQBOT_CONFIGURE_IPC_CHANNEL
-  ),
-  serviceStart: defineIpc<QQBotServiceStartParams, QQBotActionResult>(
-    QQBOT_SERVICE_START_IPC_CHANNEL
-  ),
-  serviceStop: defineIpc<QQBotServiceStopParams, QQBotActionResult>(
-    QQBOT_SERVICE_STOP_IPC_CHANNEL
-  ),
-  autoReplyConfigure: defineIpc<QQBotAutoReplyConfigureParams, QQBotActionResult>(
-    QQBOT_AUTO_REPLY_CONFIGURE_IPC_CHANNEL
-  ),
-  autoReplyRunOnce: defineIpc<undefined, QQBotActionResult>(
-    QQBOT_AUTO_REPLY_RUN_ONCE_IPC_CHANNEL
-  )
-});
+let qqbotContextRunnerRegistered = false;
 
-export async function qqbotDashboardStatusViaIpc(
-  params: QQBotDashboardStatusParams = {}
-): Promise<QQBotDashboardStatusResult> {
-  return await qqbotIpc.dashboardStatus(params);
+function registerQQBotContextRunner(): void {
+  if (qqbotContextRunnerRegistered) {
+    return;
+  }
+  qqbotContextRunnerRegistered = true;
+  ToolPkg.ipc.on<QQBotContextRunPayload, object>(
+    QQBOT_CONTEXT_RUN_IPC_CHANNEL,
+    async (payload) => await executeContextRunner(payload)
+  );
 }
 
-export async function qqbotConfigureViaIpc(params: QQBotConfigureParams = {}): Promise<QQBotActionResult> {
-  return await qqbotIpc.configure(params);
+registerQQBotContextRunner();
+registerQQBotContextModule(QQBotRuntime as QQBotContextModule);
+registerQQBotContextModule(QQBotAutoReply as QQBotContextModule);
+
+async function runWithContext<TResult extends object>(
+  kind: ToolPkg.RuntimeKind,
+  envs: object,
+  runner: QQBotContextRunner<TResult>
+): Promise<TResult> {
+  const payload: QQBotContextRunPayload = {
+    functionSource: runner.toString(),
+    envs
+  };
+  try {
+    return await ToolPkg.ipc.call<QQBotContextRunPayload, TResult>(
+      QQBOT_CONTEXT_RUN_IPC_CHANNEL,
+      payload,
+      {
+        targetRuntime: kind
+      }
+    );
+  } catch (error) {
+    const errorText = error instanceof Error ? error.message : "withContext call failed";
+    console.error(
+      `[qqbot_ipc] withContext call failed: kind=${kind}, error=${errorText}, envs=${previewJson(envs)}`
+    );
+    throw error;
+  }
 }
 
-export async function qqbotServiceStartViaIpc(
-  params: QQBotServiceStartParams = {}
-): Promise<QQBotActionResult> {
-  return await qqbotIpc.serviceStart(params);
+export function withContext<TResult extends object>(
+  kind: ToolPkg.RuntimeKind,
+  envs: object,
+  runner: QQBotContextRunner<TResult>
+): Promise<TResult>;
+
+export function withContext<TResult extends object>(
+  kind: ToolPkg.RuntimeKind,
+  envs: object,
+  runner?: QQBotContextRunner<TResult>
+): Promise<TResult> {
+  if (!runner) {
+    throw new Error("withContext requires runner");
+  }
+  return runWithContext(kind, envs, runner);
 }
 
-export async function qqbotServiceStopViaIpc(
-  params: QQBotServiceStopParams = {}
-): Promise<QQBotActionResult> {
-  return await qqbotIpc.serviceStop(params);
-}
-
-export async function qqbotAutoReplyConfigureViaIpc(
-  params: QQBotAutoReplyConfigureParams = {}
-): Promise<QQBotActionResult> {
-  return await qqbotIpc.autoReplyConfigure(params);
-}
-
-export async function qqbotAutoReplyRunOnceViaIpc(): Promise<QQBotActionResult> {
-  return await qqbotIpc.autoReplyRunOnce();
-}
+export * from "./qqbot_runtime";
+export * from "./qqbot_auto_reply";

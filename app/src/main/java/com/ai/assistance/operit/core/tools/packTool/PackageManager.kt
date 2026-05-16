@@ -412,6 +412,14 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         return toolPkgExecutionEngines.computeIfAbsent(normalizedKey) { JsEngine(context) }
     }
 
+    internal fun findToolPkgExecutionEngine(contextKey: String): JsEngine? {
+        val normalizedKey = contextKey.trim()
+        if (normalizedKey.isBlank()) {
+            return null
+        }
+        return toolPkgExecutionEngines[normalizedKey]
+    }
+
     fun releaseToolPkgExecutionEngine(contextKey: String) {
         val normalizedKey = contextKey.trim().ifBlank { return }
         toolPkgExecutionEngines.remove(normalizedKey)?.destroy()
@@ -423,6 +431,10 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             return
         }
         releaseToolPkgExecutionEngine("toolpkg_main:$normalizedPackageName")
+        val providerPrefix = "toolpkg_provider:$normalizedPackageName:"
+        toolPkgExecutionEngines.keys
+            .filter { key -> key.startsWith(providerPrefix) }
+            .forEach { key -> releaseToolPkgExecutionEngine(key) }
     }
 
     internal val toolPkgContainersInternal: MutableMap<String, ToolPkgContainerRuntime>
@@ -1496,7 +1508,10 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         pluginId: String? = null,
         inlineFunctionSource: String? = null,
         eventPayload: Map<String, Any?> = emptyMap(),
-        onIntermediateResult: ((Any?) -> Unit)? = null
+        onIntermediateResult: ((Any?) -> Unit)? = null,
+        executionContextKey: String? = null,
+        runtimeKind: String? = null,
+        dispatchIntermediateOnMain: Boolean = true
     ): Result<Any?> {
         return toolPkgFacade.runToolPkgMainHook(
             containerPackageName = containerPackageName,
@@ -1506,7 +1521,10 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             pluginId = pluginId,
             inlineFunctionSource = inlineFunctionSource,
             eventPayload = eventPayload,
-            onIntermediateResult = onIntermediateResult
+            onIntermediateResult = onIntermediateResult,
+            executionContextKey = executionContextKey,
+            runtimeKind = runtimeKind,
+            dispatchIntermediateOnMain = dispatchIntermediateOnMain
         )
     }
 

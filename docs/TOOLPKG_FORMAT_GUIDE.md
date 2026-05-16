@@ -396,13 +396,14 @@ exports.onInputMenuToggle = onInputMenuToggle;
 
 #### 3.2.5 执行上下文、模块实例与 IPC
 
-ToolPkg 运行时按执行来源分为三类上下文：
+ToolPkg 运行时按执行来源分为四类上下文：
 
 | 上下文 | 典型入口 | 用途 | 实例边界 |
 |------|------|------|------|
 | `main` | `manifest.main` 指向的包入口脚本 | ToolPkg 的包级逻辑：注册 hook、执行 hook、注册/处理包级 IPC、承载包级内存态 | 同一个 ToolPkg 容器共用一个包级 JS engine，内部 context key 形如 `toolpkg_main:<toolpkg_id>` |
 | `ui` | `*.ui.js` 的 Compose DSL screen / action handler | 渲染界面、响应点击、读取 UI state | 每个 UI route、widget、XML render 实例有自己的 JS engine |
 | `sandbox` | 独立工具脚本、子包工具脚本、调试脚本 | 执行一次性工具逻辑；可以通过 IPC 调用所属 ToolPkg 的 `main` | 按工具脚本执行链路管理 |
+| `provider` | `ToolPkg.registerAiProvider(...)` 注册的 AI provider handler | 处理自定义 AI provider 的模型列表、连接测试、发消息、token 估算 | 每个 ToolPkg provider 使用独立 JS engine，内部 context key 形如 `toolpkg_provider:<toolpkg_id>:<provider_id>` |
 
 `manifest.main` 指向 ToolPkg 的包级入口脚本，这个入口脚本运行在 `main` 上下文。`main` 适合承载需要跨 UI、子包工具共享的内存态，例如当前会话状态、后台任务句柄、缓存和 IPC handler。
 
@@ -411,6 +412,7 @@ ToolPkg 运行时按执行来源分为三类上下文：
 - `main`：ToolPkg 包级 main 上下文。
 - `ui`：Compose DSL UI 上下文。
 - `sandbox`：独立工具脚本、子包工具脚本、调试脚本上下文。
+- `provider`：自定义 AI provider 上下文。
 
 按照示例工程当前的 `tsconfig` 配置，可以在 TypeScript 源码中正常使用 ES `import` / `export` 语法；同步脚本编译后会输出 CommonJS 形式，运行时按 `require` 加载模块。
 
@@ -470,14 +472,25 @@ async function setEnabled(enabled) {
 }
 ```
 
+需要调用指定 runtime 实例时，可以传第三个参数：
+
+```javascript
+await ToolPkg.ipc.call(
+  "demo.refresh_panel",
+  { reason: "settings_changed" },
+  { targetRuntime: "ui", targetContextKey: panelContextKey }
+);
+```
+
 `ToolPkg.ipc` 的基本语义：
 
 - `ToolPkg.ipc.on(channel, handler)` 在当前上下文注册通道处理函数。
-- `ToolPkg.ipc.call(channel, payload)` 调用通道并返回 `Promise`。
+- `ToolPkg.ipc.call(channel, payload)` 保持原语义：非 main 上下文调用同包 ToolPkg main；main 上下文调用本地 handler。
+- `ToolPkg.ipc.call(channel, payload, options)` 可指定 `targetRuntime` / `targetContextKey` 调用目标 runtime 实例。
 - `payload` 和返回值应使用 JSON 可序列化数据：字符串、数字、布尔值、数组、普通对象和 `null`。
 - 对象会按数据复制传输，不保留引用身份、原型、方法闭包或类实例。
 - 同一个上下文内调用已注册通道会直接进入本地 handler。
-- UI 上下文调用包级通道会通过宿主桥接到 ToolPkg main 上下文。
+- 指定 `ui`、`provider`、`sandbox` 目标时需要提供明确的 `targetContextKey`；目标不存在会直接报错。
 
 判断准则：
 

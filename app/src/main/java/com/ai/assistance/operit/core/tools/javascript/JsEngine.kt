@@ -81,6 +81,7 @@ class JsEngine(private val context: Context) {
         val callId: String,
         val future: CompletableFuture<Any?>,
         val intermediateResultCallback: ((Any?) -> Unit)?,
+        val dispatchIntermediateOnMain: Boolean,
         val envOverrides: Map<String, String>,
         val packageChatId: String?,
         val toolPkgLogSnapshot: JsToolPkgExecutionContext.LogSnapshot,
@@ -286,12 +287,14 @@ class JsEngine(private val context: Context) {
         params: Map<String, Any?>,
         envOverrides: Map<String, String>,
         onIntermediateResult: ((Any?) -> Unit)?,
+        dispatchIntermediateOnMain: Boolean,
         executionListener: JsExecutionListener?
     ): ExecutionSession {
         return ExecutionSession(
             callId = callId,
             future = CompletableFuture(),
             intermediateResultCallback = onIntermediateResult,
+            dispatchIntermediateOnMain = dispatchIntermediateOnMain,
             envOverrides = envOverrides,
             packageChatId =
                 params["__operit_package_chat_id"]
@@ -688,6 +691,7 @@ class JsEngine(private val context: Context) {
             params: Map<String, Any?>,
             envOverrides: Map<String, String> = emptyMap(),
             onIntermediateResult: ((Any?) -> Unit)? = null,
+            dispatchIntermediateOnMain: Boolean = true,
             timeoutSec: Long = JsTimeoutConfig.MAIN_TIMEOUT_SECONDS.toLong(),
             executionListener: JsExecutionListener? = null
     ): Any? {
@@ -750,6 +754,7 @@ class JsEngine(private val context: Context) {
                 params = effectiveParams,
                 envOverrides = envOverrides,
                 onIntermediateResult = onIntermediateResult,
+                dispatchIntermediateOnMain = dispatchIntermediateOnMain,
                 executionListener = executionListener
             )
         activeExecutionSessions[callId] = session
@@ -860,6 +865,7 @@ class JsEngine(private val context: Context) {
             params: Map<String, Any?> = emptyMap(),
             envOverrides: Map<String, String> = emptyMap(),
             onIntermediateResult: ((Any?) -> Unit)? = null,
+            dispatchIntermediateOnMain: Boolean = true,
             timeoutSec: Long = JsTimeoutConfig.MAIN_TIMEOUT_SECONDS.toLong(),
             executionListener: JsExecutionListener? = null
     ): Any? {
@@ -872,6 +878,7 @@ class JsEngine(private val context: Context) {
             params = directParams,
             envOverrides = envOverrides,
             onIntermediateResult = onIntermediateResult,
+            dispatchIntermediateOnMain = dispatchIntermediateOnMain,
             timeoutSec = timeoutSec,
             executionListener = executionListener
         )
@@ -1102,55 +1109,124 @@ class JsEngine(private val context: Context) {
         )
     }
 
-    private fun invokeToolPkgMainIpc(
+    private fun buildToolPkgIpcFailure(message: String): String =
+        JSONObject()
+            .put("success", false)
+            .put("message", message)
+            .toString()
+
+    private fun inferToolPkgIpcRuntimeFromContextKey(contextKey: String): String {
+        val normalized = contextKey.trim().lowercase()
+        return when {
+            normalized.startsWith("toolpkg_main:") -> "main"
+            normalized.startsWith("toolpkg_provider:") -> "provider"
+            normalized.startsWith("toolpkg_compose_dsl:") -> "ui"
+            normalized.startsWith("toolpkg_xml_render:") -> "ui"
+            else -> ""
+        }
+    }
+
+    private fun invokeToolPkgIpc(
         packageTarget: String,
         callerContextKey: String,
+        targetContextKey: String,
+        targetRuntime: String,
         channel: String,
         payloadJson: String
     ): String {
         val normalizedTarget = packageTarget.trim()
         if (normalizedTarget.isEmpty()) {
-            return JSONObject()
-                .put("success", false)
-                .put("message", "ToolPkg.ipc package target is empty")
-                .toString()
+            return buildToolPkgIpcFailure("ToolPkg.ipc package target is empty")
         }
         val normalizedChannel = channel.trim()
         if (normalizedChannel.isEmpty()) {
-            return JSONObject()
-                .put("success", false)
-                .put("message", "ToolPkg.ipc channel is required")
-                .toString()
+            return buildToolPkgIpcFailure("ToolPkg.ipc channel is required")
         }
-        val mainContextKey = "toolpkg_main:$normalizedTarget"
-        val engine = packageManager.getToolPkgExecutionEngine(mainContextKey)
+        val requestedRuntime = targetRuntime.trim().lowercase()
+        if (
+            requestedRuntime.isNotEmpty() &&
+                requestedRuntime != "main" &&
+                requestedRuntime != "ui" &&
+                requestedRuntime != "sandbox" &&
+                requestedRuntime != "provider"
+        ) {
+            return buildToolPkgIpcFailure("ToolPkg.ipc targetRuntime is invalid: $requestedRuntime")
+        }
         packageManager.ensureInitialized()
         val containerRuntime =
             packageManager.toolPkgContainersInternal[normalizedTarget]
-                ?: return JSONObject()
-                    .put("success", false)
-                    .put("message", "ToolPkg container not found: $normalizedTarget")
-                    .toString()
-        val mainScriptPath = containerRuntime.mainEntry.trim()
-        if (mainScriptPath.isEmpty()) {
-            return JSONObject()
-                .put("success", false)
-                .put("message", "ToolPkg main entry is unavailable: $normalizedTarget")
-                .toString()
+                ?: return buildToolPkgIpcFailure("ToolPkg container not found: $normalizedTarget")
+        val explicitTargetContextKey = targetContextKey.trim()
+        val resolvedTargetContextKey =
+            if (explicitTargetContextKey.isNotEmpty()) {
+                explicitTargetContextKey
+            } else if (requestedRuntime.isEmpty() || requestedRuntime == "main") {
+                "toolpkg_main:$normalizedTarget"
+            } else {
+                return buildToolPkgIpcFailure(
+                    "ToolPkg.ipc targetContextKey is required for targetRuntime=$requestedRuntime"
+                )
+            }
+        val inferredRuntime = inferToolPkgIpcRuntimeFromContextKey(resolvedTargetContextKey)
+        if (
+            requestedRuntime.isNotEmpty() &&
+                inferredRuntime.isNotEmpty() &&
+                requestedRuntime != inferredRuntime
+        ) {
+            return buildToolPkgIpcFailure(
+                "ToolPkg.ipc targetRuntime does not match targetContextKey: $requestedRuntime != $inferredRuntime"
+            )
         }
-        val mainScript =
-            packageManager.getToolPkgMainScriptInternal(normalizedTarget)
-                ?: return JSONObject()
-                    .put("success", false)
-                    .put("message", "ToolPkg main script is unavailable: $normalizedTarget")
-                    .toString()
+        val resolvedTargetRuntime =
+            if (requestedRuntime.isNotEmpty()) {
+                requestedRuntime
+            } else if (inferredRuntime.isNotEmpty()) {
+                inferredRuntime
+            } else {
+                return buildToolPkgIpcFailure(
+                    "ToolPkg.ipc targetRuntime is required for targetContextKey=$resolvedTargetContextKey"
+                )
+            }
+        val isMainTarget = resolvedTargetRuntime == "main"
+        if (isMainTarget && !resolvedTargetContextKey.equals("toolpkg_main:$normalizedTarget", ignoreCase = true)) {
+            return buildToolPkgIpcFailure(
+                "ToolPkg.ipc main targetContextKey is invalid: $resolvedTargetContextKey"
+            )
+        }
+        if (!isMainTarget && explicitTargetContextKey.isEmpty()) {
+            return buildToolPkgIpcFailure(
+                "ToolPkg.ipc targetContextKey is required for targetRuntime=$resolvedTargetRuntime"
+            )
+        }
+        val engine =
+            if (isMainTarget) {
+                packageManager.getToolPkgExecutionEngine(resolvedTargetContextKey)
+            } else {
+                packageManager.findToolPkgExecutionEngine(resolvedTargetContextKey)
+                    ?: return buildToolPkgIpcFailure(
+                        "ToolPkg.ipc target runtime is not active: $resolvedTargetContextKey"
+                    )
+            }
+        var scriptPath = ""
+        var script = ""
+        if (isMainTarget) {
+            scriptPath = containerRuntime.mainEntry.trim()
+            if (scriptPath.isEmpty()) {
+                return buildToolPkgIpcFailure("ToolPkg main entry is unavailable: $normalizedTarget")
+            }
+            script =
+                packageManager.getToolPkgMainScriptInternal(normalizedTarget)
+                    ?: return buildToolPkgIpcFailure(
+                        "ToolPkg main script is unavailable: $normalizedTarget"
+                    )
+        }
         val dispatchFunctionName = "__operit_toolpkg_runtime_dispatch__"
         val dispatchFunctionSource =
             """
                 async function(params) {
                     var dispatch = globalThis.__operitInvokeToolPkgIpcLocal;
                     if (typeof dispatch !== 'function') {
-                        throw new Error('ToolPkg.ipc runtime is unavailable in main context');
+                        throw new Error('ToolPkg.ipc runtime is unavailable in target context');
                     }
                     var payloadJson =
                         params && typeof params.__operit_toolpkg_ipc_payload_json === 'string'
@@ -1184,11 +1260,15 @@ class JsEngine(private val context: Context) {
                         params && typeof params.__operit_ui_package_name === 'string'
                             ? params.__operit_ui_package_name
                             : '';
+                    var currentRuntime =
+                        params && typeof params.__operit_toolpkg_runtime_kind === 'string'
+                            ? params.__operit_toolpkg_runtime_kind.trim()
+                            : '';
                     return await dispatch(channel, payload, {
                         channel: channel,
                         callerContextKey: callerContextKey,
                         currentContextKey: currentContextKey,
-                        currentRuntime: 'main',
+                        currentRuntime: currentRuntime,
                         packageTarget: packageTarget
                     });
                 }
@@ -1196,15 +1276,16 @@ class JsEngine(private val context: Context) {
         return try {
             val result =
                 engine.executeScriptFunction(
-                    script = mainScript,
+                    script = script,
                     functionName = dispatchFunctionName,
                     params =
                         mapOf(
                             "__operit_ui_package_name" to normalizedTarget,
                             "toolPkgId" to normalizedTarget,
                             "containerPackageName" to normalizedTarget,
-                            "__operit_execution_context_key" to mainContextKey,
-                            "__operit_script_screen" to mainScriptPath,
+                            "__operit_execution_context_key" to resolvedTargetContextKey,
+                            "__operit_toolpkg_runtime_kind" to resolvedTargetRuntime,
+                            "__operit_script_screen" to scriptPath,
                             "__operit_inline_function_name" to dispatchFunctionName,
                             "__operit_inline_function_source" to dispatchFunctionSource,
                             "__operit_toolpkg_ipc_channel" to normalizedChannel,
@@ -1227,10 +1308,10 @@ class JsEngine(private val context: Context) {
                     .toString()
             }
         } catch (error: Exception) {
-            AppLogger.e(TAG, "ToolPkg.ipc main runtime invoke failed: ${error.message}", error)
+            AppLogger.e(TAG, "ToolPkg.ipc runtime invoke failed: ${error.message}", error)
             JSONObject()
                 .put("success", false)
-                .put("message", error.message ?: "ToolPkg.ipc main runtime invoke failed")
+                .put("message", error.message ?: "ToolPkg.ipc runtime invoke failed")
                 .toString()
         }
     }
@@ -1456,10 +1537,12 @@ class JsEngine(private val context: Context) {
         }
 
         @JavascriptInterface
-        fun invokeToolPkgMainIpcAsync(
+        fun invokeToolPkgIpcAsync(
             callbackId: String,
             packageTarget: String,
             callerContextKey: String,
+            targetContextKey: String,
+            targetRuntime: String,
             channel: String,
             payloadJson: String
         ) {
@@ -1470,9 +1553,11 @@ class JsEngine(private val context: Context) {
             Thread {
                 try {
                     val resultJson =
-                        invokeToolPkgMainIpc(
+                        invokeToolPkgIpc(
                             packageTarget = packageTarget,
                             callerContextKey = callerContextKey,
+                            targetContextKey = targetContextKey,
+                            targetRuntime = targetRuntime,
                             channel = channel,
                             payloadJson = payloadJson
                         )
@@ -2086,9 +2171,13 @@ class JsEngine(private val context: Context) {
             try {
                 val session = resolveExecutionSession(callId) ?: return
                 session.executionListener?.onIntermediateResult(callId, result)
-                ContextCompat.getMainExecutor(context).execute {
-                    session.intermediateResultCallback?.invoke(result)
+                if (session.dispatchIntermediateOnMain) {
+                    ContextCompat.getMainExecutor(context).execute {
+                        session.intermediateResultCallback?.invoke(result)
+                    }
+                    return
                 }
+                session.intermediateResultCallback?.invoke(result)
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Error processing call intermediate result: callId=$callId, reason=${e.message}", e)
             }

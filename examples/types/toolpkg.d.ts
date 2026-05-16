@@ -759,12 +759,19 @@ export namespace ToolPkg {
         calculateInputTokens: { function: AiProviderCalculateInputTokensHandler };
     }
 
+    export type RuntimeKind = "main" | "ui" | "sandbox" | "provider";
+
     export interface IpcMeta {
         channel: string;
         callerContextKey?: string;
         currentContextKey?: string;
-        currentRuntime?: "main" | "ui" | "sandbox";
+        currentRuntime?: RuntimeKind;
         packageTarget?: string;
+    }
+
+    export interface IpcCallOptions {
+        targetRuntime?: RuntimeKind;
+        targetContextKey?: string;
     }
 
     export interface IpcApi {
@@ -778,7 +785,8 @@ export namespace ToolPkg {
         ): boolean;
         call<TPayload = unknown, TResult = unknown>(
             channel: string,
-            payload?: TPayload
+            payload?: TPayload,
+            options?: IpcCallOptions
         ): Promise<TResult>;
     }
 

@@ -4,11 +4,20 @@ import {
   type QQBotAutoReplyConfigureParams,
   type QQBotAutoReplyStatusResult,
   type QQBotConfigureParams,
+  type QQBotDashboardStatusParams,
   type QQBotDashboardStatusResult,
+  type QQBotServiceStartParams,
+  type QQBotServiceStopParams,
   ENV_KEYS
 } from "../../shared/qqbot_common.js";
 import {
-  qqbotIpc
+  qqbot_auto_reply_configure,
+  qqbot_auto_reply_run_once,
+  qqbot_configure,
+  qqbot_dashboard_status,
+  qqbot_service_start,
+  qqbot_service_stop,
+  withContext
 } from "../../shared/qqbot_ipc.js";
 
 type TextBundle = {
@@ -556,7 +565,8 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
       clearMessages();
     }
     try {
-      const dashboardStatus = await qqbotIpc.dashboardStatus({ summary_only: true });
+      const params = { summary_only: true };
+      const dashboardStatus = await withContext("main", { params }, async () => await qqbot_dashboard_status(params));
       if (!dashboardStatus?.success) {
         logSettingsError("dashboardStatus returned failure", dashboardStatus);
         throw new Error(String(dashboardStatus?.error || "qqbot_dashboard_status failed"));
@@ -635,16 +645,17 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
 
     await runAction(
       testConnection ? "save_and_test" : "save_credentials",
-      async () => await qqbotIpc.configure(params),
+      async () => await withContext("main", { params }, async () => await qqbot_configure(params)),
       testConnection ? text.testingDone : text.savingDone
     );
   };
 
   const saveSandboxSetting = async (checked: boolean): Promise<void> => {
     useSandboxState.set(checked);
+    const params: QQBotConfigureParams = { use_sandbox: checked };
     await runAction(
       "save_credentials",
-      async () => await qqbotIpc.configure({ use_sandbox: checked }),
+      async () => await withContext("main", { params }, async () => await qqbot_configure(params)),
       text.savingDone
     );
   };
@@ -671,9 +682,10 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
   };
 
   const saveAutomation = async (): Promise<void> => {
+    const params = buildAutomationParams();
     await runAction(
       "save_automation",
-      async () => await qqbotIpc.autoReplyConfigure(buildAutomationParams()),
+      async () => await withContext("main", { params }, async () => await qqbot_auto_reply_configure(params)),
       text.savingDone
     );
   };
@@ -687,14 +699,14 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
     if (isAnyBusy) {
       return;
     }
+    const params: QQBotAutoReplyConfigureParams = {
+      ...buildAutomationParams(),
+      enabled: checked,
+      start_now: checked
+    };
     await runAction(
       "save_automation",
-      async () =>
-        await qqbotIpc.autoReplyConfigure({
-          ...buildAutomationParams(),
-          enabled: checked,
-          start_now: checked
-        }),
+      async () => await withContext("main", { params }, async () => await qqbot_auto_reply_configure(params)),
       text.savingDone
     );
   };
@@ -710,7 +722,9 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
     await runAction(
       checked ? "start_service" : "stop_service",
       async () => {
-        return checked ? await qqbotIpc.serviceStart({}) : await qqbotIpc.serviceStop({});
+        return await withContext("main", { checked }, async () => {
+          return checked ? await qqbot_service_start({}) : await qqbot_service_stop({});
+        });
       },
       text.actionDone
     );
@@ -954,6 +968,22 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
                 }),
                 ...(loadingCardsState.value
                   ? [
+                    ctx.UI.Box(
+                      {
+                        modifier: ctx.Modifier
+                          .fillMaxWidth()
+                          .padding({ horizontal: 16, vertical: 12 })
+                      },
+                      [
+                        ctx.UI.Text({
+                          text: text.cardDropdownLoading,
+                          color: "onSurfaceVariant"
+                        })
+                      ]
+                    )
+                  ]
+                  : availableCardsState.value.length === 0
+                    ? [
                       ctx.UI.Box(
                         {
                           modifier: ctx.Modifier
@@ -962,77 +992,61 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
                         },
                         [
                           ctx.UI.Text({
-                            text: text.cardDropdownLoading,
+                            text: text.cardDropdownNoCards,
                             color: "onSurfaceVariant"
                           })
                         ]
                       )
                     ]
-                  : availableCardsState.value.length === 0
-                    ? [
-                        ctx.UI.Box(
-                          {
-                            modifier: ctx.Modifier
-                              .fillMaxWidth()
-                              .padding({ horizontal: 16, vertical: 12 })
-                          },
-                          [
-                            ctx.UI.Text({
-                              text: text.cardDropdownNoCards,
-                              color: "onSurfaceVariant"
-                            })
-                          ]
-                        )
-                      ]
                     : availableCardsState.value.map((card) =>
-                        ctx.UI.Box(
-                          {
-                            modifier: ctx.Modifier
-                              .fillMaxWidth()
-                              .clickable(() => pickCharacterCard(card.id))
-                              .padding({ horizontal: 16, vertical: 12 })
-                          },
-                          [
-                            ctx.UI.Row(
-                              {
-                                fillMaxWidth: true,
-                                horizontalArrangement: "spaceBetween",
-                                verticalAlignment: "center"
-                              },
-                              [
-                                ctx.UI.Column({ weight: 1, spacing: 2 }, [
-                                  ctx.UI.Text({
-                                    text: card.name,
-                                    color: "onSurface",
-                                    fontWeight:
-                                      card.id === characterCardIdState.value.trim() ? "bold" : "normal",
-                                    maxLines: 1,
-                                    overflow: "ellipsis"
-                                  }),
-                                  ...(card.description
-                                    ? [
-                                        ctx.UI.Text({
-                                          text: card.description,
-                                          style: "bodySmall",
-                                          color: "onSurfaceVariant",
-                                          maxLines: 1,
-                                          overflow: "ellipsis"
-                                        })
-                                      ]
-                                    : [])
-                                ]),
-                                card.id === characterCardIdState.value.trim()
-                                  ? ctx.UI.Icon({
-                                      name: "check",
-                                      tint: "primary",
-                                      size: 18
+                      ctx.UI.Box(
+                        {
+                          modifier: ctx.Modifier
+                            .fillMaxWidth()
+                            .clickable(() => pickCharacterCard(card.id))
+                            .padding({ horizontal: 16, vertical: 12 })
+                        },
+                        [
+                          ctx.UI.Row(
+                            {
+                              fillMaxWidth: true,
+                              horizontalArrangement: "spaceBetween",
+                              verticalAlignment: "center"
+                            },
+                            [
+                              ctx.UI.Column({ weight: 1, spacing: 2 }, [
+                                ctx.UI.Text({
+                                  text: card.name,
+                                  color: "onSurface",
+                                  fontWeight:
+                                    card.id === characterCardIdState.value.trim() ? "bold" : "normal",
+                                  maxLines: 1,
+                                  overflow: "ellipsis"
+                                }),
+                                ...(card.description
+                                  ? [
+                                    ctx.UI.Text({
+                                      text: card.description,
+                                      style: "bodySmall",
+                                      color: "onSurfaceVariant",
+                                      maxLines: 1,
+                                      overflow: "ellipsis"
                                     })
-                                  : ctx.UI.Spacer({ width: 18 })
-                              ]
-                            )
-                          ]
-                        )
-                      ))
+                                  ]
+                                  : [])
+                              ]),
+                              card.id === characterCardIdState.value.trim()
+                                ? ctx.UI.Icon({
+                                  name: "check",
+                                  tint: "primary",
+                                  size: 18
+                                })
+                                : ctx.UI.Spacer({ width: 18 })
+                            ]
+                          )
+                        ]
+                      )
+                    ))
               ]
             )
           ]
@@ -1089,7 +1103,7 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
           onClick: async () =>
             await runAction(
               "run_once",
-              async () => await qqbotIpc.autoReplyRunOnce(),
+              async () => await withContext("main", {}, async () => await qqbot_auto_reply_run_once()),
               text.actionDone
             )
         })
