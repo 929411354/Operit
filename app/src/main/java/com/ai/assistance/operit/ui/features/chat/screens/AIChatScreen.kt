@@ -132,6 +132,7 @@ fun AIChatScreen(
     val context = LocalContext.current
     val density = LocalDensity.current
     val colorScheme = MaterialTheme.colorScheme
+    val isCurrentScreen = LocalIsCurrentScreen.current
 // Correctly initialize ViewModel using the viewModel() composable function
 val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(context.applicationContext) }
 
@@ -398,7 +399,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                     TextButton(onClick = {
                         showModelSuggestionDialog = false
                         // 如果用户已输入token，直接保存配置
-                        actualViewModel.updateApiKey(ApiPreferences.DEFAULT_API_KEY)
+                        actualViewModel.updateApiKey("")
                         actualViewModel.updateApiEndpoint(ApiPreferences.DEFAULT_API_ENDPOINT)
                         actualViewModel.updateModelName(ApiPreferences.DEFAULT_MODEL_NAME)
                         actualViewModel.updateApiProviderType(ApiProviderType.DEEPSEEK)
@@ -434,18 +435,12 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     )
 
     val pendingChatDraft by PendingChatDraftHandler.pendingDraft.collectAsState()
-    LaunchedEffect(pendingChatDraft) {
+    LaunchedEffect(pendingChatDraft, isCurrentScreen) {
+        if (!isCurrentScreen) return@LaunchedEffect
         val draft = pendingChatDraft?.trim().orEmpty()
         if (draft.isBlank()) return@LaunchedEffect
 
-        actualViewModel.showChatHistorySelector(false)
-        actualViewModel.createNewChat()
-        actualViewModel.updateUserMessage(
-            TextFieldValue(
-                text = draft,
-                selection = TextRange(draft.length)
-            )
-        )
+        actualViewModel.createNewChatWithDraft(draft)
         PendingChatDraftHandler.clearPendingDraft()
     }
 
@@ -581,9 +576,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         // 只有当apiKey有效值时才执行逻辑，防止初始化阶段的不正确判断
         if (apiKey.isNotBlank()) {
             // 如果使用的是自定义配置，标记为已确认，不显示配置界面
-            if (apiKey != ApiPreferences.DEFAULT_API_KEY) {
-                ConfigurationStateHolder.hasConfirmedDefaultInSession = true
-            }
+            ConfigurationStateHolder.hasConfirmedDefaultInSession = true
         }
     }
 
@@ -830,7 +823,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     // 从CompositionLocal获取设置TopBar Actions的函数
     val setTopBarActions = LocalTopBarActions.current
     val appBarContentColor = LocalAppBarContentColor.current
-    val isCurrentScreen = LocalIsCurrentScreen.current
     val setScreenSoftInputMode = LocalSetScreenSoftInputMode.current
     val setUseScreenImePadding = LocalSetUseScreenImePadding.current
     val requestedSoftInputMode =

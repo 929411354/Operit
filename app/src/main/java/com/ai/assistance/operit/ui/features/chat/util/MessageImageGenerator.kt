@@ -215,7 +215,7 @@ object MessageImageGenerator {
                                             Column(
                                                 modifier = Modifier.fillMaxWidth().wrapContentHeight()
                                             ) {
-                                                // 顶部品牌栏：Logo + "Operit AI"
+                                                // 顶部品牌栏：Logo + "Engie Claw"
                                                 Row(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
@@ -233,7 +233,7 @@ object MessageImageGenerator {
                                                     Spacer(modifier = Modifier.width(2.dp))
                                                     // 品牌名称
                                                     Text(
-                                                        text = "Operit AI",
+                                                        text = "Engie Claw",
                                                         fontSize = 16.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         color = colorScheme.onSurface

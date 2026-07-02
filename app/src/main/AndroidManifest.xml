@@ -166,7 +166,7 @@
         <!-- Workspace Documents Provider for SAF -->
         <provider
             android:name=".provider.WorkspaceDocumentsProvider"
-            android:authorities="com.ai.assistance.operit.documents.workspace"
+            android:authorities="${applicationId}.documents.workspace"
             android:exported="true"
             android:grantUriPermissions="true"
             android:permission="android.permission.MANAGE_DOCUMENTS">
@@ -177,9 +177,21 @@
 
         <provider
             android:name=".provider.MemoryDocumentsProvider"
-            android:authorities="com.ai.assistance.operit.documents.memory"
+            android:authorities="${applicationId}.documents.memory"
             android:exported="true"
             android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+
+        <provider
+            android:name=".provider.OperitDataDocumentsProvider"
+            android:authorities="${applicationId}.documents.data"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:process=":repair"
             android:permission="android.permission.MANAGE_DOCUMENTS">
             <intent-filter>
                 <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
@@ -277,6 +289,18 @@
             android:label="@string/title_activity_crash_report"
             android:process=":crash"
             android:theme="@style/Theme.Operit" />
+
+        <activity
+            android:name=".ui.recovery.DataRecoveryActivity"
+            android:exported="true"
+            android:label="@string/title_activity_data_recovery"
+            android:process=":repair"
+            android:theme="@style/Theme.Operit">
+            <intent-filter>
+                <action android:name="com.ai.assistance.operit.action.OPEN_DATA_RECOVERY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         
         <activity
             android:name=".integrations.tasker.ActivityConfigAIAgentAction"

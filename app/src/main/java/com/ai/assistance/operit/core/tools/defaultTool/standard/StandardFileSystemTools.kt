@@ -697,6 +697,7 @@ open class StandardFileSystemTools(protected val context: Context) {
         executorKey: String
     ): HiddenExecResult {
         ensureRipgrepAvailable(toolName)
+        ToolProgressBus.update(toolName, 0.1f, "Running ripgrep...")
         return requireHiddenCommandSuccess(
             action = "Failed to capture ripgrep output",
             result =
@@ -981,7 +982,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 )
             }
 
-            ToolProgressBus.update(toolName, 0.05f, "Running ripgrep...")
+            ToolProgressBus.update(toolName, 0.05f, "Preparing ripgrep...")
             val command =
                 buildRipgrepCodeCommand(
                     path = path,
@@ -4279,7 +4280,7 @@ open class StandardFileSystemTools(protected val context: Context) {
         val environment = tool.parameters.find { it.name == "environment" }?.value
         val newContent = tool.parameters.find { it.name == "new" }?.value ?: ""
 
-        return applyFile(
+        val applyResult = applyFile(
             AITool(
                 name = "apply_file",
                 parameters = listOfNotNull(
@@ -4290,6 +4291,8 @@ open class StandardFileSystemTools(protected val context: Context) {
                 )
             )
         ).last()
+
+        return wrapApplyFileResult(tool.name, applyResult)
     }
 
     /** Edit a file by delegating to apply_file with type=replace */
@@ -4299,7 +4302,7 @@ open class StandardFileSystemTools(protected val context: Context) {
         val oldContent = tool.parameters.find { it.name == "old" }?.value ?: ""
         val newContent = tool.parameters.find { it.name == "new" }?.value ?: ""
 
-        return applyFile(
+        val applyResult = applyFile(
             AITool(
                 name = "apply_file",
                 parameters = listOfNotNull(
@@ -4311,6 +4314,12 @@ open class StandardFileSystemTools(protected val context: Context) {
                 )
             )
         ).last()
+
+        return wrapApplyFileResult(tool.name, applyResult)
+    }
+
+    private fun wrapApplyFileResult(toolName: String, applyResult: ToolResult): ToolResult {
+        return applyResult.copy(toolName = toolName)
     }
 
     /**

@@ -92,7 +92,7 @@ class ModelConfigManager(private val context: Context) {
         return ModelConfigData(
                 id = DEFAULT_CONFIG_ID,
                 name = context.getString(R.string.model_config_default_name),
-                apiKey = ApiPreferences.DEFAULT_API_KEY,
+                apiKey = "",
                 apiEndpoint = ApiPreferences.DEFAULT_API_ENDPOINT,
                 modelName = ApiPreferences.DEFAULT_MODEL_NAME,
                 apiProviderType = DEFAULT_API_PROVIDER_TYPE,
@@ -539,14 +539,16 @@ class ModelConfigManager(private val context: Context) {
             enableSummary: Boolean,
             summaryTokenThreshold: Float,
             enableSummaryByMessageCount: Boolean,
-            summaryMessageCountThreshold: Int
+            summaryMessageCountThreshold: Int,
+            summaryCustomRules: String = ""
     ): ModelConfigData {
         return updateConfigInternal(configId) {
             it.copy(
                     enableSummary = enableSummary,
                     summaryTokenThreshold = summaryTokenThreshold,
                     enableSummaryByMessageCount = enableSummaryByMessageCount,
-                    summaryMessageCountThreshold = summaryMessageCountThreshold
+                    summaryMessageCountThreshold = summaryMessageCountThreshold,
+                    summaryCustomRules = summaryCustomRules
             )
         }
     }

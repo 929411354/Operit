@@ -2,12 +2,7 @@ package com.ai.assistance.operit.ui.theme
 
 import android.content.Context
 import android.content.res.Configuration
-import android.os.Build
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import com.ai.assistance.operit.data.preferences.ThemePreferenceSnapshot
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
@@ -15,15 +10,9 @@ import com.ai.assistance.operit.data.preferences.UserPreferencesManager.Companio
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager.Companion.ON_COLOR_MODE_DARK
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager.Companion.ON_COLOR_MODE_LIGHT
 
-private val ResolvedDarkColorScheme =
-    darkColorScheme(primary = Purple80, secondary = PurpleGrey80, tertiary = Pink80)
+private val ResolvedDarkColorScheme = EngieClawDarkColorScheme
 
-private val ResolvedLightColorScheme =
-    lightColorScheme(
-        primary = Purple40,
-        secondary = PurpleGrey40,
-        tertiary = Pink40
-    )
+private val ResolvedLightColorScheme = EngieClawLightColorScheme
 
 fun resolveThemeColorScheme(
     context: Context,
@@ -40,17 +29,7 @@ fun resolveThemeColorScheme(
         }
 
     var colorScheme =
-        when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-                if (darkTheme) {
-                    dynamicDarkColorScheme(context)
-                } else {
-                    dynamicLightColorScheme(context)
-                }
-
-            darkTheme -> ResolvedDarkColorScheme
-            else -> ResolvedLightColorScheme
-        }
+        if (darkTheme) ResolvedDarkColorScheme else ResolvedLightColorScheme
 
     if (snapshot.useCustomColors) {
         snapshot.customPrimaryColor?.let { primaryArgb ->

@@ -283,6 +283,43 @@ function formatOutgoingAttachments(uploads: WebUploadedAttachment[]) {
   }));
 }
 
+function uniqueUploadFileName(fileName: string, usedFileNames: Set<string>) {
+  if (!usedFileNames.has(fileName)) {
+    return fileName;
+  }
+
+  const dotIndex = fileName.lastIndexOf('.');
+  const hasExtension = dotIndex > 0 && dotIndex < fileName.length - 1;
+  const baseName = hasExtension ? fileName.slice(0, dotIndex) : fileName;
+  const extension = hasExtension ? fileName.slice(dotIndex) : '';
+
+  let index = 2;
+  let candidate = `${baseName}_${index}${extension}`;
+  while (usedFileNames.has(candidate)) {
+    index += 1;
+    candidate = `${baseName}_${index}${extension}`;
+  }
+  return candidate;
+}
+
+function makeUploadsFileNamesUnique(
+  currentUploads: WebUploadedAttachment[],
+  incomingUploads: WebUploadedAttachment[]
+) {
+  const usedFileNames = new Set(currentUploads.map((upload) => upload.file_name));
+  return incomingUploads.map((upload) => {
+    const uniqueFileName = uniqueUploadFileName(upload.file_name, usedFileNames);
+    usedFileNames.add(uniqueFileName);
+    if (uniqueFileName === upload.file_name) {
+      return upload;
+    }
+    return {
+      ...upload,
+      file_name: uniqueFileName
+    };
+  });
+}
+
 function mergeLatestConversationPage(
   existingMessages: WebChatMessage[],
   latestMessages: WebChatMessage[]
@@ -589,6 +626,59 @@ export function useChatViewModel(): ChatViewModel {
   const streamAbortRef = useRef<AbortController | null>(null);
   const queueIdRef = useRef(1);
   const skipNextConversationLoadRef = useRef(false);
+  const selectedChatIdRef = useRef<string | null>(null);
+  const messageInputRef = useRef('');
+  const messageDraftsByChatIdRef = useRef<Record<string, string>>({});
+
+  function saveMessageDraft(chatId: string, value: string) {
+    if (value.length === 0) {
+      delete messageDraftsByChatIdRef.current[chatId];
+      return;
+    }
+
+    messageDraftsByChatIdRef.current[chatId] = value;
+  }
+
+  function clearMessageDraft(chatId: string | null) {
+    if (chatId != null) {
+      delete messageDraftsByChatIdRef.current[chatId];
+    }
+  }
+
+  function updateMessageInput(value: string) {
+    messageInputRef.current = value;
+    setMessageInput(value);
+    const chatId = selectedChatIdRef.current;
+    if (chatId != null) {
+      saveMessageDraft(chatId, value);
+    }
+  }
+
+  function activateChat(chatId: string | null, saveCurrentDraft = true) {
+    const previousChatId = selectedChatIdRef.current;
+    if (previousChatId === chatId) {
+      setSelectedChatId(chatId);
+      return;
+    }
+
+    if (previousChatId != null && saveCurrentDraft) {
+      saveMessageDraft(previousChatId, messageInputRef.current);
+    }
+
+    selectedChatIdRef.current = chatId;
+    setSelectedChatId(chatId);
+    const nextInput = chatId != null ? messageDraftsByChatIdRef.current[chatId] ?? '' : '';
+    messageInputRef.current = nextInput;
+    setMessageInput(nextInput);
+  }
+
+  function resetChatDrafts() {
+    messageDraftsByChatIdRef.current = {};
+    selectedChatIdRef.current = null;
+    messageInputRef.current = '';
+    setSelectedChatId(null);
+    setMessageInput('');
+  }
 
   function handleApiFailure(loadError: unknown) {
     if (handleUnauthorizedError(loadError, () => setToken(''))) {
@@ -664,7 +754,7 @@ export function useChatViewModel(): ChatViewModel {
       setInputSettings(inputSettingsData);
       setMemorySelector(memorySelectorData);
       const nextChatId = preferredChatId ?? bootData.current_chat_id ?? null;
-      setSelectedChatId(nextChatId);
+      activateChat(nextChatId);
       if (!nextChatId) {
         setTheme(null);
         setMessages([]);
@@ -726,7 +816,7 @@ export function useChatViewModel(): ChatViewModel {
       setModelSelector(null);
       setModelSelectorLoading(false);
       setChats([]);
-      setSelectedChatId(null);
+      resetChatDrafts();
       setMessages([]);
       setPendingUploads([]);
       setPendingQueueMessages([]);
@@ -873,7 +963,7 @@ export function useChatViewModel(): ChatViewModel {
     setHasMoreHistoryBefore(false);
     setHasMoreHistoryAfter(false);
     setAutoScrollToBottom(true);
-    setSelectedChatId(matchedChat.id);
+    activateChat(matchedChat.id);
     return true;
   }
 
@@ -895,7 +985,7 @@ export function useChatViewModel(): ChatViewModel {
         });
         targetChatId = chat.id;
         skipNextConversationLoadRef.current = true;
-        setSelectedChatId(chat.id);
+        activateChat(chat.id);
         if (historyLoaded) {
           setChats((currentChats) => [chat, ...currentChats.filter((item) => item.id !== chat.id)]);
         }
@@ -1029,7 +1119,7 @@ export function useChatViewModel(): ChatViewModel {
       setTheme(null);
       setHasMoreHistoryBefore(false);
       setHasMoreHistoryAfter(false);
-      setSelectedChatId(chat.id);
+      activateChat(chat.id);
       setHistoryOpenState(false);
     } catch (actionError: unknown) {
       handleApiFailure(actionError);
@@ -1069,6 +1159,7 @@ export function useChatViewModel(): ChatViewModel {
         characterSelector?.active_prompt ?? null
       );
       await deleteChat(token, chat.id);
+      clearMessageDraft(chat.id);
       setChats((currentChats) => currentChats.filter((item) => item.id !== chat.id));
       const nextChats = await refreshChats(token);
       const fallbackId = nextChats[0]?.id ?? null;
@@ -1087,7 +1178,7 @@ export function useChatViewModel(): ChatViewModel {
         setAutoScrollToBottom(true);
 
         if (replacementChat) {
-          setSelectedChatId(replacementChat.id);
+          activateChat(replacementChat.id, false);
           return;
         }
 
@@ -1098,7 +1189,7 @@ export function useChatViewModel(): ChatViewModel {
         const refreshedChats = await refreshChats(token);
         const nextSelectedChat =
           refreshedChats.find((item) => item.id === createdChat.id) ?? createdChat;
-        setSelectedChatId(nextSelectedChat.id);
+        activateChat(nextSelectedChat.id, false);
         return;
       }
 
@@ -1108,7 +1199,7 @@ export function useChatViewModel(): ChatViewModel {
         setHasMoreHistoryBefore(false);
         setHasMoreHistoryAfter(false);
         setAutoScrollToBottom(true);
-        setSelectedChatId(fallbackId);
+        activateChat(fallbackId, false);
       }
     } catch (actionError: unknown) {
       handleApiFailure(actionError);
@@ -1128,7 +1219,7 @@ export function useChatViewModel(): ChatViewModel {
     setHasMoreHistoryAfter(false);
     setHistoryOpenState(false);
     setAutoScrollToBottom(true);
-    setSelectedChatId(chatId);
+    activateChat(chatId);
 
     if (token && targetChat) {
       void syncActivePromptForChat(token, targetChat).catch((actionError: unknown) => {
@@ -1155,7 +1246,9 @@ export function useChatViewModel(): ChatViewModel {
       for (const file of normalizedFiles) {
         uploaded.push(await uploadAttachment(token, file));
       }
-      setPendingUploads((currentUploads) => currentUploads.concat(uploaded));
+      setPendingUploads((currentUploads) =>
+        currentUploads.concat(makeUploadsFileNamesUnique(currentUploads, uploaded))
+      );
       setAttachmentPanelOpen(false);
     } catch (uploadError: unknown) {
       handleApiFailure(uploadError);
@@ -1172,12 +1265,12 @@ export function useChatViewModel(): ChatViewModel {
   }
 
   async function sendMessage() {
-    const outgoingText = messageInput.trim();
+    const outgoingText = messageInputRef.current.trim();
     const uploadsSnapshot = [...pendingUploads];
     if (!shouldConfirmContextLimit(outgoingText)) {
       return;
     }
-    setMessageInput('');
+    updateMessageInput('');
     setPendingUploads([]);
     await sendPreparedMessage(outgoingText, uploadsSnapshot);
   }
@@ -1243,7 +1336,7 @@ export function useChatViewModel(): ChatViewModel {
   }
 
   function queueDraftMessage() {
-    const draftText = messageInput.trim();
+    const draftText = messageInputRef.current.trim();
     if (!draftText) {
       return;
     }
@@ -1256,7 +1349,7 @@ export function useChatViewModel(): ChatViewModel {
     queueIdRef.current += 1;
     setPendingQueueMessages((currentQueue) => currentQueue.concat(nextItem));
     setPendingQueueExpanded(true);
-    setMessageInput('');
+    updateMessageInput('');
   }
 
   function deletePendingQueueMessage(id: number) {
@@ -1267,7 +1360,7 @@ export function useChatViewModel(): ChatViewModel {
     setPendingQueueMessages((currentQueue) => {
       const target = currentQueue.find((item) => item.id === id);
       if (target) {
-        setMessageInput(target.text);
+        updateMessageInput(target.text);
       }
       return currentQueue.filter((item) => item.id !== id);
     });
@@ -1416,7 +1509,7 @@ export function useChatViewModel(): ChatViewModel {
         setHasMoreHistoryBefore(false);
         setHasMoreHistoryAfter(false);
         setAutoScrollToBottom(true);
-        setSelectedChatId(fallbackChatId);
+        activateChat(fallbackChatId, false);
       }
     } catch (actionError: unknown) {
       handleApiFailure(actionError);
@@ -1542,10 +1635,8 @@ export function useChatViewModel(): ChatViewModel {
     [chats, selectedChatId]
   );
 
-  const activeChatStyle: ChatStyle =
-    theme?.chat_style === 'bubble' || boot?.default_chat_style === 'bubble' ? 'bubble' : 'cursor';
-  const activeInputStyle: InputStyle =
-    theme?.input.style === 'agent' || boot?.default_input_style === 'agent' ? 'agent' : 'classic';
+  const activeChatStyle: ChatStyle = theme?.chat_style === 'bubble' ? 'bubble' : 'cursor';
+  const activeInputStyle: InputStyle = theme?.input.style === 'agent' ? 'agent' : 'classic';
 
   const activeCharacterName = characterSelector?.active_prompt.name ?? '当前角色';
   const activeCharacterAvatarUrl = characterSelector?.active_prompt.avatar_url ?? null;
@@ -1637,7 +1728,7 @@ export function useChatViewModel(): ChatViewModel {
     renameConversation,
     deleteConversation,
     selectChat,
-    setMessageInput,
+    setMessageInput: updateMessageInput,
     setSearch,
     uploadFiles,
     removePendingUpload,

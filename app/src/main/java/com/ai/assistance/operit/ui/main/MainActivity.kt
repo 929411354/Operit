@@ -35,10 +35,13 @@ import androidx.lifecycle.Observer
 import androidx.lifecycle.lifecycleScope
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.AIForegroundService
+import com.ai.assistance.operit.core.application.OperitApplication
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.preferences.AgreementPreferences
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.preferences.androidPermissionPreferences
+import com.ai.assistance.operit.data.repository.ChatHistoryManager
 import com.ai.assistance.operit.data.updates.UpdateManager
 import com.ai.assistance.operit.data.updates.UpdateStatus
 import com.ai.assistance.operit.ui.common.NavItem
@@ -54,6 +57,7 @@ import com.ai.assistance.operit.util.AnrMonitor
 import com.ai.assistance.operit.util.LocaleUtils
 import java.util.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.ai.assistance.operit.data.mcp.MCPRepository
 import android.content.Intent
@@ -97,12 +101,8 @@ class MainActivity : ComponentActivity() {
     // UpdateManager实例
     private lateinit var updateManager: UpdateManager
 
-
     // 是否显示权限引导界面
     private var showPermissionGuide by mutableStateOf(false)
-
-    // 是否已完成初始检查
-    private var initialChecksDone = false
 
     // 存储待处理的分享文件URIs
     private var pendingSharedFileUris: List<Uri>? = null
@@ -198,6 +198,8 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
         restoreRuntimeTaskViewVisibilityIfNeeded()
 
+        (application as OperitApplication).initializeMainApplication()
+
         // 语言设置已在Application中初始化，这里无需重复
 
         initializeComponents()
@@ -215,7 +217,7 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, getString(R.string.plugin_loading_skipped), Toast.LENGTH_SHORT).show()
         }
 
-        // 设置初始界面 - 显示加载占位符
+        // 设置初始界面
         setAppContent()
         processPendingGitHubAuth()
 
@@ -226,9 +228,6 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             // 进行必要的初始检查
             performInitialChecks()
-        } else {
-            // 配置变更时不重新检查，直接显示主界面
-            initialChecksDone = true
         }
 
         // 设置双击返回退出
@@ -378,6 +377,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private suspend fun prepareStartupChatIfNeeded() {
+        try {
+            val displayPreferencesManager =
+                DisplayPreferencesManager.getInstance(this@MainActivity)
+            if (!displayPreferencesManager.startWithNewChat.first()) {
+                return
+            }
+
+            val chatHistoryManager = ChatHistoryManager.getInstance(this@MainActivity)
+            val newChat = chatHistoryManager.createNewChat(
+                setAsCurrentChat = false
+            )
+            chatHistoryManager.setCurrentChatId(newChat.id)
+            AppLogger.d(TAG, "启动时已创建新的空白聊天")
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "启动时创建空白聊天失败", e)
+        }
+    }
+
     private fun parseRouteArgsJson(raw: String?): Map<String, Any?> {
         val text = raw?.trim().orEmpty()
         if (text.isBlank()) {
@@ -410,16 +428,12 @@ class MainActivity : ComponentActivity() {
             // 2. 检查权限级别设置
             checkPermissionLevelSet()
 
+            prepareStartupChatIfNeeded()
+
             // 3. 在协议已接受且无需权限引导时，启动插件加载
             if (!showPermissionGuide && agreementPreferences.isAgreementAccepted()) {
                 startPluginLoading()
             }
-
-            // 标记完成初始检查
-            initialChecksDone = true
-
-            // 设置应用内容
-            setAppContent()
         }
     }
 
@@ -665,12 +679,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             OperitTheme {
                 Box {
-                    // 如果初始化检查未完成，则显示一个占位符，避免在检查完成前显示不完整的界面
-                    if (!initialChecksDone) {
-                        // 在这里可以放置一个加载指示器，或者一个空白屏幕
-                        // 为了简单起见，我们暂时留空，因为检查过程很快
-                    } else {
-                        // 检查是否需要显示用户协议
+                    // 检查是否需要显示用户协议
                         if (!agreementPreferences.isAgreementAccepted()) {
                             AgreementScreen(
                                     onAgreementAccepted = {
@@ -770,7 +779,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
+
 
     private fun getHighestRefreshRate(): Int {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

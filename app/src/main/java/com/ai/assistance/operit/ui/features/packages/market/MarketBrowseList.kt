@@ -44,6 +44,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +67,7 @@ data class MarketBrowseCardModel(
     val thumbsUpCount: Int = 0,
     val heartCount: Int = 0,
     val downloads: Int = 0,
+    val showAction: Boolean = true,
     val actionState: MarketBrowseActionState = MarketBrowseActionState.Available
 )
 
@@ -93,20 +96,30 @@ fun <T> MarketBrowseList(
     sortOption: MarketSortOption,
     onSearchQueryChanged: (String) -> Unit,
     onSortOptionChanged: (MarketSortOption) -> Unit,
+    featuredOnly: Boolean = true,
+    onFeaturedOnlyChanged: (Boolean) -> Unit = {},
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     @StringRes searchPlaceholderRes: Int,
     @StringRes headerTitleRes: Int,
     @StringRes emptySearchTitleRes: Int,
     @StringRes emptyDefaultTitleRes: Int,
+    sortOptions: List<MarketSortOption> = MarketSortOption.entries,
     itemKey: (T) -> Any,
     updatedAtSelector: (T) -> String,
     itemContent: @Composable (T) -> Unit,
+    initialFirstVisibleItemIndex: Int = 0,
+    initialFirstVisibleItemScrollOffset: Int = 0,
+    onScrollPositionChanged: (Int, Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = initialFirstVisibleItemIndex,
+        initialFirstVisibleItemScrollOffset = initialFirstVisibleItemScrollOffset
+    )
     val pullToRefreshState = rememberPullToRefreshState()
     val showInitialLoading = isLoading && items.isEmpty()
+    val lastLoadMoreIndex = remember { mutableStateOf(-1) }
     val isRefreshing = isLoading && items.isNotEmpty() && searchQuery.isBlank()
 
     LaunchedEffect(listState, items.size, searchQuery, hasMore, isLoadingMore) {
@@ -114,9 +127,17 @@ fun <T> MarketBrowseList(
             .collect { lastVisibleIndex ->
                 if (searchQuery.isNotBlank()) return@collect
                 val lastItemIndex = items.size - 1
-                if (hasMore && !isLoadingMore && items.isNotEmpty() && lastVisibleIndex >= (lastItemIndex - 2)) {
+                if (hasMore && !isLoadingMore && items.isNotEmpty() && lastVisibleIndex >= (lastItemIndex - 2) && lastVisibleIndex != lastLoadMoreIndex.value) {
+                    lastLoadMoreIndex.value = lastVisibleIndex
                     onLoadMore()
                 }
+            }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                onScrollPositionChanged(index, offset)
             }
     }
 
@@ -126,7 +147,10 @@ fun <T> MarketBrowseList(
             onSearchQueryChanged = onSearchQueryChanged,
             sortOption = sortOption,
             onSortOptionChanged = onSortOptionChanged,
-            searchPlaceholderRes = searchPlaceholderRes
+            featuredOnly = featuredOnly,
+            onFeaturedOnlyChanged = onFeaturedOnlyChanged,
+            searchPlaceholderRes = searchPlaceholderRes,
+            sortOptions = sortOptions
         )
 
         Box(modifier = Modifier.fillMaxSize()) {
@@ -357,10 +381,12 @@ fun MarketBrowseCard(
                 )
             }
 
-            MarketBrowseInstallButton(
-                state = model.actionState,
-                onClick = onInstall
-            )
+            if (model.showAction) {
+                MarketBrowseInstallButton(
+                    state = model.actionState,
+                    onClick = onInstall
+                )
+            }
         }
     }
 }

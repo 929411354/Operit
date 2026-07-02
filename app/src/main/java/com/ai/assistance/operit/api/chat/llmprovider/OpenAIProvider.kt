@@ -15,6 +15,7 @@ import com.ai.assistance.operit.api.chat.llmprovider.EndpointCompleter
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.ChatUtils
+import com.ai.assistance.operit.util.HttpLogSanitizer
 import com.ai.assistance.operit.util.LocaleUtils
 import com.ai.assistance.operit.util.StreamingJsonXmlConverter
 import com.ai.assistance.operit.util.TokenCacheManager
@@ -724,6 +725,23 @@ open class OpenAIProvider(
         return tokenCacheManager.calculateInputTokens(comparableHistory, toolsJson)
     }
 
+    protected fun audioFormatFromMime(mimeType: String): String {
+        return when (mimeType.lowercase()) {
+            "audio/wav", "audio/x-wav" -> "wav"
+            "audio/mpeg", "audio/mp3" -> "mp3"
+            "audio/ogg" -> "ogg"
+            "audio/webm" -> "webm"
+            else -> mimeType.substringAfter("/", "wav")
+        }
+    }
+
+    protected open fun buildInputAudioPayload(link: MediaLink): JSONObject {
+        return JSONObject().apply {
+            put("data", link.base64Data)
+            put("format", audioFormatFromMime(link.mimeType))
+        }
+    }
+
     /**
      * 构建content字段（可能是字符串或数组）
      * @param text 要处理的文本内容
@@ -774,27 +792,11 @@ open class OpenAIProvider(
 
         val contentArray = JSONArray()
 
-        fun audioFormatFromMime(mimeType: String): String {
-            return when (mimeType.lowercase()) {
-                "audio/wav", "audio/x-wav" -> "wav"
-                "audio/mpeg", "audio/mp3" -> "mp3"
-                "audio/ogg" -> "ogg"
-                "audio/webm" -> "webm"
-                else -> mimeType.substringAfter("/", "wav")
-            }
-        }
-
         if (supportsAudio) {
             audioLinks.forEach { link ->
                 contentArray.put(JSONObject().apply {
                     put("type", "input_audio")
-                    put(
-                        "input_audio",
-                        JSONObject().apply {
-                            put("data", link.base64Data)
-                            put("format", audioFormatFromMime(link.mimeType))
-                        }
-                    )
+                    put("input_audio", buildInputAudioPayload(link))
                 })
             }
         }
@@ -1216,7 +1218,7 @@ open class OpenAIProvider(
 
             // 构建XML格式
             val toolTagName = ChatMarkupRegex.generateRandomToolTagName()
-            xml.append("<$toolTagName name=\"$name\">")
+            xml.append("\n<$toolTagName name=\"$name\">")
 
             // 添加所有参数
             val keys = params.keys()
@@ -1627,7 +1629,7 @@ open class OpenAIProvider(
             "AIService",
             "[req=$requestTraceId] Request trace summary: provider=${traceContext.provider}, model=${traceContext.model}, stream=$stream, attempt=$attemptNumber, bodyBytes=$bodyBytes, endpoint=${traceContext.endpointLabel}"
         )
-        logLargeString("AIService", "Request headers: \n${request.headers}")
+        logLargeString("AIService", "Request headers: \n${HttpLogSanitizer.headersForLog(request.headers)}")
         return request
     }
 
@@ -2409,7 +2411,7 @@ open class OpenAIProvider(
                                     if (parsed.toolCalls.length() > 0 && enableToolCall) {
                                         val xmlToolCalls = convertToolCallsToXml(parsed.toolCalls)
                                         if (xmlToolCalls.isNotEmpty()) {
-                                            emitter.emitContent("\n" + xmlToolCalls)
+                                            emitter.emitContent(xmlToolCalls)
                                             AppLogger.d(
                                                 "AIService",
                                                 "Tool Call转XML (Responses非流式): $xmlToolCalls"
@@ -2429,7 +2431,7 @@ open class OpenAIProvider(
                                             if (toolCalls != null && toolCalls.length() > 0 && enableToolCall) {
                                                 val xmlToolCalls = convertToolCallsToXml(toolCalls)
                                                 if (xmlToolCalls.isNotEmpty()) {
-                                                    emitter.emitContent("\n" + xmlToolCalls)
+                                                    emitter.emitContent(xmlToolCalls)
                                                     AppLogger.d(
                                                         "AIService",
                                                         "Tool Call转XML (非流式): $xmlToolCalls"

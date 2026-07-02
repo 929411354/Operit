@@ -645,11 +645,12 @@ class ChatHistoryManager private constructor(private val context: Context) {
     }
 
     private suspend fun persistMessageLocked(chatId: String, messageToPersist: ChatMessage): ChatMessage {
+        val nextOrderIndex = (messageDao.getMaxOrderIndex(chatId) ?: -1) + 1
         val messageEntity =
             MessageEntity.fromChatMessage(
                 chatId = chatId,
                 message = messageToPersist,
-                orderIndex = 0
+                orderIndex = nextOrderIndex,
             )
         messageDao.insertMessage(messageEntity)
 
@@ -1140,10 +1141,11 @@ class ChatHistoryManager private constructor(private val context: Context) {
                     }
                 } else {
                     // 如果找不到现有消息，则插入新消息（避免在同一互斥锁下递归调用 addMessage）
+                    val nextOrderIndex = (messageDao.getMaxOrderIndex(chatId) ?: -1) + 1
                     val messageEntity = MessageEntity.fromChatMessage(
                         chatId = chatId,
                         message = message,
-                        orderIndex = 0
+                        orderIndex = nextOrderIndex,
                     )
                     messageDao.insertMessage(messageEntity)
 
@@ -2168,6 +2170,32 @@ class ChatHistoryManager private constructor(private val context: Context) {
                 AppLogger.e(TAG, "加载运行态聊天消息失败", e)
                 emptyList()
             }
+        }
+    }
+
+    suspend fun loadRuntimeChatMessagesUpTo(
+        chatId: String,
+        upToTimestampInclusive: Long
+    ): List<ChatMessage> {
+        return withContext(Dispatchers.IO) {
+            val latestSummaryTimestamp =
+                messageDao.getLatestSummaryTimestampUpTo(chatId, upToTimestampInclusive)
+            val messageEntities =
+                if (latestSummaryTimestamp != null) {
+                    messageDao.getMessagesForChatWindowAsc(
+                        chatId = chatId,
+                        startTimestampInclusive = latestSummaryTimestamp,
+                        endTimestampInclusive = upToTimestampInclusive
+                    )
+                } else {
+                    messageDao.getMessagesForChatInRangeAsc(
+                        chatId = chatId,
+                        afterTimestampExclusive = null,
+                        beforeTimestampExclusive = null,
+                        upToTimestampInclusive = upToTimestampInclusive
+                    )
+                }
+            hydrateMessages(chatId, messageEntities)
         }
     }
 

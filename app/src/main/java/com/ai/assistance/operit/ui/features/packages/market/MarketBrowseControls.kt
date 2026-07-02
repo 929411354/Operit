@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -21,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
+import androidx.compose.material3.FilterChipDefaults
 
 @Composable
 fun MarketBrowseControls(
@@ -29,6 +31,9 @@ fun MarketBrowseControls(
     sortOption: MarketSortOption,
     onSortOptionChanged: (MarketSortOption) -> Unit,
     @StringRes searchPlaceholderRes: Int,
+    sortOptions: List<MarketSortOption> = MarketSortOption.entries,
+    featuredOnly: Boolean = true,
+    onFeaturedOnlyChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -46,13 +51,27 @@ fun MarketBrowseControls(
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        MarketSortOption.entries.forEach { option ->
+        sortOptions.forEach { option ->
             FilterChip(
                 selected = sortOption == option,
                 onClick = { onSortOptionChanged(option) },
                 label = { Text(stringResource(option.labelRes)) }
             )
         }
+        FilterChip(
+            selected = featuredOnly,
+            onClick = { onFeaturedOnlyChanged(!featuredOnly) },
+            leadingIcon = {
+                if (featuredOnly) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(FilterChipDefaults.IconSize)
+                    )
+                }
+            },
+            label = { Text(stringResource(R.string.market_filter_featured_only)) }
+        )
     }
 }
 

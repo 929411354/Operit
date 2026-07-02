@@ -11,6 +11,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.CrashRecoveryState
+import com.ai.assistance.operit.util.ThrowableTextFormatter
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -33,19 +35,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.ai.assistance.operit.ui.components.CustomScaffold
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.ui.common.OperitUtilityTheme
 import com.ai.assistance.operit.ui.features.toolbox.screens.logcat.LogcatExportHelper
 import com.ai.assistance.operit.ui.main.MainActivity
-import com.ai.assistance.operit.ui.theme.OperitTheme
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -54,14 +56,20 @@ class CrashReportActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_STACK_TRACE = "extra_stack_trace"
+        private const val MAX_CRASH_REPORT_CHARS = 24_000
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val stackTrace = intent.getStringExtra(EXTRA_STACK_TRACE) ?: "No stack trace available."
+        CrashRecoveryState.consumePendingCrashReportLaunch(this)
+        val stackTrace = ThrowableTextFormatter.truncateText(
+            intent.getStringExtra(EXTRA_STACK_TRACE) ?: "No stack trace available.",
+            MAX_CRASH_REPORT_CHARS
+        )
 
-        AppLogger.e("CrashReportActivity", "stackTrace: $stackTrace")
-        setContent { OperitTheme { CrashReportScreen(stackTrace = stackTrace) } }
+        AppLogger.e("CrashReportActivity", "Displaying crash report, chars=${stackTrace.length}")
+        AppLogger.e("CrashReportActivity", "Stack trace:\n$stackTrace")
+        setContent { OperitUtilityTheme { CrashReportScreen(stackTrace = stackTrace) } }
     }
 }
 
@@ -74,7 +82,7 @@ fun CrashReportScreen(stackTrace: String) {
     var logExportMessage by remember { mutableStateOf<String?>(null) }
     var logExportSuccess by remember { mutableStateOf<Boolean?>(null) }
 
-    CustomScaffold(
+    Scaffold(
             topBar = {
                 TopAppBar(
                         title = { Text(stringResource(id = R.string.title_activity_crash_report)) },
@@ -259,7 +267,7 @@ private fun exportToFile(context: Context, text: String) {
         val file = File(errorDir, "error-report-$timestamp.log")
 
         FileOutputStream(file).use {
-            it.write(text.toByteArray())
+            it.write(text.toByteArray(StandardCharsets.UTF_8))
         }
         val successMsg = context.getString(R.string.crash_report_export_success, file.absolutePath)
         Toast.makeText(context, successMsg, Toast.LENGTH_LONG).show()
@@ -267,7 +275,7 @@ private fun exportToFile(context: Context, text: String) {
     } catch (e: Exception) {
         val errorMsg = context.getString(R.string.crash_report_export_failed, e.localizedMessage)
         Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
-        e.printStackTrace()
+        AppLogger.e("CrashReportActivity", "Failed to export crash report", e)
     }
 }
 

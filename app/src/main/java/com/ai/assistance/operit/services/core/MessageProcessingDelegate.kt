@@ -95,6 +95,9 @@ class MessageProcessingDelegate(
 
     private val _userMessage = MutableStateFlow(TextFieldValue(""))
     val userMessage: StateFlow<TextFieldValue> = _userMessage.asStateFlow()
+    private val userMessageDraftsByChatId = ConcurrentHashMap<String, TextFieldValue>()
+    @Volatile
+    private var activeDraftChatId: String? = null
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -448,12 +451,68 @@ class MessageProcessingDelegate(
         AppLogger.d(TAG, "MessageProcessingDelegate初始化: 创建滚动事件流")
     }
 
+    fun setActiveDraftChat(chatId: String?) {
+        val previousChatId = activeDraftChatId
+        if (previousChatId == chatId) {
+            return
+        }
+
+        val currentValue = _userMessage.value
+        if (previousChatId != null) {
+            saveUserMessageDraft(previousChatId, currentValue)
+        }
+
+        activeDraftChatId = chatId
+        if (chatId == null) {
+            _userMessage.value = TextFieldValue("")
+            return
+        }
+
+        val savedDraft = userMessageDraftsByChatId[chatId]
+        if (savedDraft != null) {
+            _userMessage.value = savedDraft
+            return
+        }
+
+        if (previousChatId == null && currentValue.text.isNotEmpty()) {
+            saveUserMessageDraft(chatId, currentValue)
+            _userMessage.value = currentValue
+            return
+        }
+
+        _userMessage.value = TextFieldValue("")
+    }
+
     fun updateUserMessage(message: String) {
-        _userMessage.value = TextFieldValue(message)
+        setUserMessageDraft(TextFieldValue(message))
     }
 
     fun updateUserMessage(value: TextFieldValue) {
+        setUserMessageDraft(value)
+    }
+
+    private fun setUserMessageDraft(value: TextFieldValue) {
         _userMessage.value = value
+        val chatId = activeDraftChatId
+        if (chatId != null) {
+            saveUserMessageDraft(chatId, value)
+        }
+    }
+
+    private fun saveUserMessageDraft(chatId: String, value: TextFieldValue) {
+        if (value.text.isEmpty()) {
+            userMessageDraftsByChatId.remove(chatId)
+            return
+        }
+
+        userMessageDraftsByChatId[chatId] = value
+    }
+
+    private fun clearUserMessageDraft(chatId: String) {
+        userMessageDraftsByChatId.remove(chatId)
+        if (activeDraftChatId == chatId) {
+            _userMessage.value = TextFieldValue("")
+        }
     }
 
     fun scrollToBottom() {
@@ -536,7 +595,7 @@ class MessageProcessingDelegate(
         var messageText = originalMessageText
         
         if (messageTextOverride == null) {
-            _userMessage.value = TextFieldValue("")
+            clearUserMessageDraft(chatId)
         }
         resetCurrentTurnToolInvocationCount(chatId)
         chatRuntime.responseStream = null
@@ -886,7 +945,7 @@ class MessageProcessingDelegate(
                 // 获取当前使用的provider和model信息
                 val loadProviderModelStartTime = messageTimingNow()
                 val (provider, modelName) = try {
-                    service.getProviderAndModelForFunction(
+                    service.getDisplayProviderAndModelForFunction(
                         functionType = com.ai.assistance.operit.data.model.FunctionType.CHAT,
                         chatModelConfigIdOverride = chatModelConfigIdOverride,
                         chatModelIndexOverride = chatModelIndexOverride
@@ -1359,6 +1418,8 @@ class MessageProcessingDelegate(
         chatModelConfigIdOverride: String?,
         chatModelIndexOverride: Int?,
         preferenceProfileIdOverride: String?,
+        groupOrchestrationMode: Boolean,
+        groupParticipantNamesText: String?,
         onVariantPreviewStarted: suspend (ChatMessage) -> Unit,
         onVariantReady: suspend (ChatMessage) -> Unit,
     ) {
@@ -1413,7 +1474,7 @@ class MessageProcessingDelegate(
                 }
 
             val (provider, modelName) =
-                service.getProviderAndModelForFunction(
+                service.getDisplayProviderAndModelForFunction(
                     functionType = FunctionType.CHAT,
                     chatModelConfigIdOverride = chatModelConfigIdOverride,
                     chatModelIndexOverride = chatModelIndexOverride,
@@ -1422,12 +1483,21 @@ class MessageProcessingDelegate(
             var firstResponseElapsed: Long? = null
             val requestSentAt = System.currentTimeMillis()
             val requestStartElapsed = messageTimingNow()
+            val effectiveRequestMessageContent =
+                if (groupOrchestrationMode &&
+                    requestMessageContent.trimStart().isNotEmpty() &&
+                    !requestMessageContent.trimStart().startsWith("[From user]")
+                ) {
+                    "[From user]\n$requestMessageContent"
+                } else {
+                    requestMessageContent
+                }
 
             val responseStream =
                 AIMessageManager.sendMessage(
                     enhancedAiService = service,
                     chatId = chatId,
-                    messageContent = requestMessageContent,
+                    messageContent = effectiveRequestMessageContent,
                     chatHistory = requestHistory,
                     workspacePath = workspacePath,
                     promptFunctionType = promptFunctionType,
@@ -1440,6 +1510,8 @@ class MessageProcessingDelegate(
                     roleCardId = roleCardId,
                     currentRoleName = currentRoleName,
                     splitHistoryByRole = true,
+                    groupOrchestrationMode = groupOrchestrationMode,
+                    groupParticipantNamesText = groupParticipantNamesText,
                     onToolInvocation = { incrementCurrentTurnToolInvocationCount(chatId) },
                     chatModelConfigIdOverride = chatModelConfigIdOverride,
                     chatModelIndexOverride = chatModelIndexOverride,

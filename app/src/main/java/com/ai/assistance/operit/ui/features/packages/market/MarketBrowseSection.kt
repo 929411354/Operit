@@ -8,7 +8,8 @@ data class MarketBrowseSectionConfig(
     @StringRes val searchPlaceholderRes: Int,
     @StringRes val headerTitleRes: Int,
     @StringRes val emptySearchTitleRes: Int,
-    @StringRes val emptyDefaultTitleRes: Int
+    @StringRes val emptyDefaultTitleRes: Int,
+    val sortOptions: List<MarketSortOption> = MarketSortOption.entries
 )
 
 data class MarketBrowseEntry(
@@ -27,12 +28,17 @@ fun <T> MarketBrowseSection(
     sortOption: MarketSortOption,
     onSearchQueryChanged: (String) -> Unit,
     onSortOptionChanged: (MarketSortOption) -> Unit,
+    featuredOnly: Boolean = true,
+    onFeaturedOnlyChanged: (Boolean) -> Unit = {},
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     config: MarketBrowseSectionConfig,
     itemKey: (T) -> Any,
     updatedAtSelector: (T) -> String,
     entryFactory: @Composable (T) -> MarketBrowseEntry,
+    initialFirstVisibleItemIndex: Int = 0,
+    initialFirstVisibleItemScrollOffset: Int = 0,
+    onScrollPositionChanged: (Int, Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     MarketBrowseList(
@@ -44,14 +50,20 @@ fun <T> MarketBrowseSection(
         sortOption = sortOption,
         onSearchQueryChanged = onSearchQueryChanged,
         onSortOptionChanged = onSortOptionChanged,
+        featuredOnly = featuredOnly,
+        onFeaturedOnlyChanged = onFeaturedOnlyChanged,
         onRefresh = onRefresh,
         onLoadMore = onLoadMore,
         searchPlaceholderRes = config.searchPlaceholderRes,
         headerTitleRes = config.headerTitleRes,
         emptySearchTitleRes = config.emptySearchTitleRes,
         emptyDefaultTitleRes = config.emptyDefaultTitleRes,
+        sortOptions = config.sortOptions,
         itemKey = itemKey,
         updatedAtSelector = updatedAtSelector,
+        initialFirstVisibleItemIndex = initialFirstVisibleItemIndex,
+        initialFirstVisibleItemScrollOffset = initialFirstVisibleItemScrollOffset,
+        onScrollPositionChanged = onScrollPositionChanged,
         itemContent = { item ->
             val entry = entryFactory(item)
             MarketBrowseCard(

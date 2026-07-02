@@ -337,6 +337,12 @@ class ChatHistoryDelegate(
     suspend fun getRuntimeChatHistory(chatId: String): List<ChatMessage> =
         chatHistoryManager.loadRuntimeChatMessages(chatId)
 
+    suspend fun getRuntimeChatHistoryUpTo(
+        chatId: String,
+        upToTimestampInclusive: Long
+    ): List<ChatMessage> =
+        chatHistoryManager.loadRuntimeChatMessagesUpTo(chatId, upToTimestampInclusive)
+
     suspend fun getCurrentRuntimeChatHistorySnapshot(): List<ChatMessage> {
         val chatId = _currentChatId.value ?: return emptyList()
         return chatHistoryManager.loadRuntimeChatMessages(chatId)
@@ -656,7 +662,7 @@ class ChatHistoryDelegate(
 
     private suspend fun syncOpeningStatementIfNoUserMessage(chatId: String) {
         AppLogger.d(TAG, "开始同步开场白，聊天ID: $chatId")
-        
+
         historyUpdateMutex.withLock {
             val chatMeta = _chatHistories.value.firstOrNull { it.id == chatId }
             if (!chatMeta?.characterGroupId.isNullOrBlank()) {
