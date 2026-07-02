@@ -4748,7 +4748,7 @@
     <string name="enable_navigation_animation_description">휴대폰 사이드바와 페이지 전환 모두에 향상된 애니메이션 세트를 켭니다. 더 단순한 내비게이션 모션을 사용하려면 이 기능을 끄세요.</string>
     <string name="software_identity_title">소프트웨어 ID</string>
     <string name="software_identity_description">사이드바 상단에 표시된 소프트웨어 ID를 변경하세요.</string>
-    <string name="software_identity_option_operit">Operit AI</string>
+    <string name="software_identity_option_operit">Engie Claw</string>
     <string name="software_identity_option_lingshu">링슈 AI</string>
     <string name="reset_all_display_settings">모든 디스플레이 설정 재설정</string>
     <string name="ui_accessibility_mode">접근성 모드</string>
