@@ -507,12 +507,14 @@ fun OperitTheme(content: @Composable () -> Unit) {
                                 colorScheme.surfaceContainerLowest.copy(alpha = 1f),
                         ),
                     typography = customTypography,
+                    shapes = EngieClawShapes,
                     content = content,
                 )
             } else {
                 MaterialTheme(
                     colorScheme = colorScheme,
                     typography = customTypography,
+                    shapes = EngieClawShapes,
                     content = content,
                 )
             }
