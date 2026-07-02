@@ -404,7 +404,7 @@ fun BubbleUserMessageComposable(
                 val maxBubbleWidth = maxWidth
                 val bubbleShape =
                     if (bubbleRoundedCornersEnabled) {
-                        RoundedCornerShape(20.dp, 4.dp, 20.dp, 20.dp)
+                        RoundedCornerShape(16.dp, 3.dp, 16.dp, 16.dp)
                     } else {
                         RoundedCornerShape(0.dp)
                     }
@@ -549,7 +549,7 @@ fun BubbleUserMessageComposable(
                     val maxBubbleWidth = maxWidth * 0.85f
                     val bubbleShape =
                         if (bubbleRoundedCornersEnabled) {
-                            RoundedCornerShape(20.dp, 4.dp, 20.dp, 20.dp)
+                            RoundedCornerShape(16.dp, 3.dp, 16.dp, 16.dp)
                         } else {
                             RoundedCornerShape(0.dp)
                         }
