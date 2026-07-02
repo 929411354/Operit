@@ -7,4 +7,12 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Engie Claw brand colors (ember / clay / olive) -->
+    <color name="ember_200">#FFFFB596</color>
+    <color name="ember_500">#FFA23E12</color>
+    <color name="ember_700">#FF7D2E00</color>
+    <color name="olive_500">#FF5E6134</color>
+    <color name="clay_200">#FFE7BDAC</color>
+    <color name="clay_700">#FF5D4034</color>
 </resources>
